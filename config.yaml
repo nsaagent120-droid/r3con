@@ -1,0 +1,90 @@
+# r3con v4.3.0 — Configuration
+# ─────────────────────────────────────────────────────────
+# Copier vers ~/.r3con/config.yaml pour personnaliser
+
+# ── Couche 1 : Foundation (toujours actif) ─────────────
+
+version: "4.3.0"
+
+# ── Couche 2 : Analysis Core (toujours actif) ──────────
+
+analysis:
+  default_depth: "deep"       # quick | deep | full
+  default_focus: "all"        # all | memory | crypto | kernel | race
+  max_file_size_mb: 100
+  parallel_analysis: true     # Analyser plusieurs modules en parallèle
+  save_to_db: true            # Sauvegarder résultats en SQLite
+
+disasm:
+  default_arch: "auto"        # auto | x86 | x86_64 | arm | arm64 | mips
+  default_output: "pseudocode"
+
+firmware:
+  entropy_block_size: 4096
+  entropy_threshold: 7.0
+  min_string_length: 6
+
+# ── Couche 3 : Intelligence (optionnel) ────────────────
+# Activer: export R3CON_EXPERT_MODE=true
+
+expert_mode:
+  # Auto-activé si R3CON_EXPERT_MODE=true
+  cvss_scoring: true
+  attack_scenarios: true
+  priority_matrix: true
+  executive_summary: true
+  exploitation_techniques: true
+
+# ── Couche 4 : AI Enhancement (optionnel) ─────────────
+# Configurer UNE des options suivantes:
+
+ai:
+  # Option A : IA locale (GRATUIT - aucune clé API)
+  # Lancer Ollama:  ollama serve
+  # Lancer LM Studio: port 1234
+  # local_url: "http://localhost:11434"
+  # local_model: "auto"           # auto-détecte le meilleur modèle
+
+  # Option B : Multi-AI local (plusieurs modèles en parallèle)
+  # multi_ai: true                # export R3CON_MULTI_AI=true
+
+  # Option C : NVIDIA Nemotron via Together AI (GRATUIT)
+  # export TOGETHER_API_KEY=...   # https://api.together.ai/
+
+  # Option D : DeepSeek (très bon marché)
+  # export DEEPSEEK_API_KEY=sk-...  # https://platform.deepseek.com/
+
+  # Option E : Google Gemini (gratuit avec limites)
+  # export GEMINI_API_KEY=...     # https://aistudio.google.com/
+
+  # Option F : Groq (gratuit, très rapide)
+  # export GROQ_API_KEY=gsk-...   # https://console.groq.com/
+
+  # Option G : Anthropic Claude (payant, meilleure qualité)
+  # export ANTHROPIC_API_KEY=sk-ant-...
+
+  max_tokens: 2048
+  timeout: 120
+
+# ── Rapports ──────────────────────────────────────────
+
+reports:
+  format: "md"                # md | html | json
+  output_dir: "~/.r3con/reports"
+  include_code_snippets: true
+  include_cvss: true
+  include_cwe: true
+  include_fix: true
+
+# ── Dashboard ─────────────────────────────────────────
+
+dashboard:
+  port: 5000
+  host: "127.0.0.1"
+  auto_refresh: 30            # secondes
+
+# ── Sessions ──────────────────────────────────────────
+
+sessions:
+  max_sessions: 500
+  storage_dir: "~/.r3con/sessions"

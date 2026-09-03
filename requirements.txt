@@ -1,0 +1,55 @@
+# r3con v4.3.0 - Requirements
+# ─────────────────────────────────────────
+
+# CORE (required)
+click>=8.1.0
+rich>=13.0.0
+
+# AI Providers (choose at least one)
+# Option 1: Anthropic Claude (paid, best quality)
+# anthropic>=0.20.0
+
+# Option 2: DeepSeek (very cheap, excellent quality)
+openai>=1.3.0           # DeepSeek uses OpenAI SDK
+
+# Option 3: Google Gemini (free tier available)
+# google-generativeai>=0.3.0
+
+# Option 4: Groq (free, very fast)
+# Already covered by openai SDK
+
+# Option 5: NVIDIA Nemotron via Together AI (FREE - RECOMMENDED)
+together>=0.2.0         # NVIDIA Nemotron 3 Super 120B
+
+# Binary analysis (optional but recommended)
+capstone>=5.0.0          # Multi-arch disassembly (x86, ARM, MIPS, RISC-V)
+lief>=0.13.0             # ELF / PE / Mach-O parsing
+
+# AST engine for C — analyse par arbre de syntaxe réel plutôt que par
+# regex sur texte brut (static_analyzer, taint_analysis, interprocedural,
+# symbolic_exec). Optionnel : sans ces deux paquets, ces modules retombent
+# automatiquement sur leur ancien chemin regex — comportement identique
+# à avant, juste moins précis (faux positifs possibles sur du code en
+# commentaire/chaîne, pas de vérification de satisfiabilité des chemins).
+tree-sitter>=0.21.0
+tree-sitter-c>=0.21.0
+
+# Solveur de contraintes SMT — utilisé par symbolic_exec.py pour prouver
+# qu'un chemin conditionnel est mathématiquement inatteignable (sous-
+# ensemble arithmétique/relationnel entier) au lieu d'une heuristique
+# textuelle. Optionnel : sans z3, reachability="unknown" et le
+# comportement retombe sur l'ancienne heuristique.
+z3-solver>=4.12.0
+
+# Firmware extraction (optional)
+# binwalk                # Install separately: pip install binwalk OR apt install binwalk
+
+# Utilities
+pyyaml>=6.0              # Config file
+jinja2>=3.1.0            # HTML report templates
+
+# Advanced features (Niveau 3)
+flask>=2.0.0              # Web dashboard
+
+# Optional full YARA semantics
+yara-python>=4.5.0
