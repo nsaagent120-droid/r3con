@@ -62,10 +62,10 @@ from modules.orchestration.orchestrator import Orchestrator
 
 # ── Theme ─────────────────────────────────────────────────────
 THEME_PRESETS = {
-    "matrix": {"banner": "bold green", "accent": "bold green", "success": "bold green", "warning": "bold yellow", "critical": "bold red", "high": "red", "medium": "yellow", "low": "green", "info": "green", "dim_cyan": "dim green", "prompt": "bold green"},
-    "cyber": {"banner": "bold magenta", "accent": "bold cyan", "success": "bold green", "warning": "bold yellow", "critical": "bold red", "high": "bright_red", "medium": "bright_yellow", "low": "bright_cyan", "info": "cyan", "dim_cyan": "dim cyan", "prompt": "bold magenta"},
-    "amber": {"banner": "bold yellow", "accent": "bold yellow", "success": "bold green", "warning": "yellow", "critical": "bold red", "high": "red", "medium": "yellow", "low": "green", "info": "yellow", "dim_cyan": "dim yellow", "prompt": "bold yellow"},
-    "mono": {"banner": "bold white", "accent": "bold white", "success": "bold white", "warning": "bold white", "critical": "bold white", "high": "white", "medium": "white", "low": "white", "info": "white", "dim_cyan": "dim white", "prompt": "bold white"},
+    "matrix": {"banner": "bold green", "accent": "bold green", "success": "bold green", "warning": "bold yellow", "critical": "bold red", "high": "red", "medium": "yellow", "low": "green", "info": "green", "muted": "dim green", "label": "green", "border": "green", "table_header": "bold green", "prompt": "bold green"},
+    "cyber": {"banner": "bold magenta", "accent": "bold cyan", "success": "bold green", "warning": "bold yellow", "critical": "bold red", "high": "bright_red", "medium": "bright_yellow", "low": "bright_cyan", "info": "cyan", "muted": "dim cyan", "label": "bright_cyan", "border": "cyan", "table_header": "bold cyan", "prompt": "bold magenta"},
+    "amber": {"banner": "bold yellow", "accent": "bold yellow", "success": "bold green", "warning": "yellow", "critical": "bold red", "high": "red", "medium": "yellow", "low": "green", "info": "yellow", "muted": "dim yellow", "label": "yellow", "border": "yellow", "table_header": "bold yellow", "prompt": "bold yellow"},
+    "mono": {"banner": "bold white", "accent": "bold white", "success": "bold white", "warning": "bold white", "critical": "bold white", "high": "white", "medium": "white", "low": "white", "info": "white", "muted": "dim white", "label": "white", "border": "white", "table_header": "bold white", "prompt": "bold white"},
 }
 
 def _make_theme(name=None):
@@ -74,15 +74,19 @@ def _make_theme(name=None):
 
 THEME_NAME = _make_theme()
 THEME = Theme(THEME_PRESETS[THEME_NAME])
-console = Console(theme=THEME)
+
+def _no_color() -> bool:
+    return os.environ.get("R3CON_NO_COLOR", "").lower() in {"1", "true", "yes", "on"}
+
+console = Console(theme=THEME, no_color=_no_color())
 
 def apply_theme(name):
     global THEME_NAME, THEME, console
     THEME_NAME = _make_theme(name)
     THEME = Theme(THEME_PRESETS[THEME_NAME])
-    console = Console(theme=THEME)
+    console = Console(theme=THEME, no_color=_no_color())
 
-VERSION  = "5.0.1"
+VERSION  = "5.0.2"
 BANNER   = """\
  ██████╗ ██████╗  ██████╗ ██████╗ ███╗   ██╗
  ██╔══██╗╚════██╗██╔════╝██╔═══██╗████╗  ██║
@@ -113,9 +117,9 @@ def _animations_enabled() -> bool:
 
 def print_banner(boot: bool = True):
     console.print()
-    title = Text(BANNER, style="bold cyan")
-    subtitle = Text(f"v{VERSION}  ·  Binary  ·  APK  ·  Firmware  ·  Kernel  ·  Network", style="dim")
-    console.print(Panel(title, subtitle=subtitle, border_style="cyan", padding=(0, 2)))
+    title = Text(BANNER, style="banner")
+    subtitle = Text(f"v{VERSION}  ·  Binary  ·  APK  ·  Firmware  ·  Kernel  ·  Network", style="muted")
+    console.print(Panel(title, subtitle=subtitle, border_style="border", padding=(0, 2)))
     ai_engine = AIEngine()
     mode_str = "[green]ONLINE[/]" if ai_engine.is_online() else "[yellow]OFFLINE[/]"
     console.print("  [bold cyan]R3CON[/]  [dim]local analysis orchestrator[/]  ·  AI: " + mode_str)
@@ -154,7 +158,7 @@ def _boot(online: bool):
 
 def section(title: str):
     console.print()
-    console.print(Rule(f"[accent] {title} [/]", style="dim cyan"))
+    console.print(Rule(f"[accent] {title} [/accent]", style="muted"))
     console.print()
 
 
@@ -163,18 +167,18 @@ def ok(msg: str):
 
 
 def info(msg: str):
-    console.print(f"  [cyan]→[/]  [dim]{msg}[/]")
+    console.print(f"  [info]→[/info]  [muted]{msg}[/muted]")
 
 
 def warn(msg: str):
-    console.print(f"  [warning]![/]  {msg}")
+    console.print(f"  [warning]![/warning]  {msg}")
 
 
 def hpanel(content: str, title: str = "", sev: str = "info"):
-    borders = {"critical":"red","high":"red","medium":"yellow",
-               "low":"green","info":"cyan","success":"green"}
-    border  = borders.get(sev.lower(), "cyan")
-    console.print(Panel(content, title=f"[bold]{title}[/]" if title else None,
+    borders = {"critical":"critical", "high":"high", "medium":"medium",
+               "low":"low", "info":"info", "success":"success"}
+    border = borders.get(sev.lower(), "border")
+    console.print(Panel(content, title=f"[bold]{title}[/bold]" if title else None,
                          border_style=border, padding=(0, 2)))
 
 
@@ -202,7 +206,7 @@ def show_findings(findings: list):
         if sev in counts:
             style, _ = SEV_STYLE.get(sev, ("white","  "))
             parts.append(f"[{style}]{counts[sev]} {sev}[/{style}]")
-    console.print(f"  [dim]Findings:[/] {' · '.join(parts)}")
+    console.print(f"  [muted]Findings:[/muted] {' · '.join(parts)}")
     console.print()
 
     sorted_f = sorted(findings,
@@ -218,10 +222,10 @@ def show_findings(findings: list):
         if f.get("offset"): loc += f"[dim cyan]@{f['offset']}[/]"
 
         console.print(f"  [{style}][{sev}][/{style}] [{style}]{icon}[/{style}]"
-                      f"  [bold]{f.get('type','')}[/]  {loc}")
-        console.print(f"       [dim]{f.get('description','')[:110]}[/]")
+                      f"  [bold]{f.get('type', f.get('finding_type', ''))}[/bold]  {loc}")
+        console.print(f"       [muted]{f.get('description','')[:110]}[/muted]")
         if f.get("recommendation"):
-            console.print(f"       [dim green]↳  {f['recommendation'][:100]}[/]")
+            console.print(f"       [success]↳  {f['recommendation'][:100]}[/success]")
         console.print()
 
 
@@ -231,11 +235,14 @@ def show_findings(findings: list):
 @click.version_option(version=VERSION)
 @click.option("--no-banner", is_flag=True)
 @click.option("--theme", type=click.Choice(["matrix", "cyber", "amber", "mono"]), default=None, help="Terminal color theme")
+@click.option("--no-color", is_flag=True, help="Disable ANSI colors for logs and CI")
 @click.pass_context
-def cli(ctx, no_banner, theme):
+def cli(ctx, no_banner, theme, no_color):
     """r3con — Binary · APK · Firmware · Kernel Security Research Tool"""
     ctx.ensure_object(dict)
-    if theme:
+    if no_color:
+        os.environ["R3CON_NO_COLOR"] = "1"
+    if theme or no_color:
         apply_theme(theme)
     ctx.obj["ai"]      = AIEngine()
     ctx.obj["session"] = SessionManager()

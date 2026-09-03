@@ -1,4 +1,4 @@
-# Guide utilisateur complet — r3con v5.0.1
+# Guide utilisateur complet — r3con v5.0.2
 
 > **r3con** est un orchestrateur local d’analyse de sécurité pour code source, binaires, firmware, APK et captures réseau. Il fonctionne offline par défaut et dégrade proprement les fonctions optionnelles lorsque les outils externes ne sont pas installés.
 
@@ -499,4 +499,33 @@ r3con plugins run ./sample.bin \
 - `docs/SETUP_AI_PROVIDERS.md` — fournisseurs IA.
 - `CHANGELOG.md` — historique des versions.
 
-**Version documentée :** r3con v5.0.1.
+**Version documentée :** r3con v5.0.2.
+
+
+## 21. Interface CLI et thèmes
+
+La CLI propose quatre thèmes visuels : `cyber`, `matrix`, `amber` et `mono`. Le thème par défaut est `cyber`.
+
+```bash
+r3con --theme cyber plugins list
+r3con --theme matrix analyze ./sample.bin --profile quick
+r3con --theme amber audit file ./source.c
+r3con --theme mono plugins list
+```
+
+Le thème peut aussi être défini par variable d’environnement :
+
+```bash
+export R3CON_THEME=matrix
+r3con plugins list
+```
+
+Pour les logs CI, les terminaux limités ou les sorties destinées à être parsées, désactivez les couleurs ANSI :
+
+```bash
+r3con --no-color --no-banner plugins list
+export R3CON_NO_COLOR=1
+r3con plugins list
+```
+
+Les styles sont sémantiques : succès, avertissement, critique, gravité, information, titre et bordure. Le thème `mono` conserve la hiérarchie typographique sans dépendre de la couleur. Les animations de démarrage sont automatiquement désactivées hors terminal interactif, en CI ou avec `R3CON_NO_ANIMATION=1`.

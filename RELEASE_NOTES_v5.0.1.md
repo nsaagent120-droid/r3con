@@ -1,4 +1,4 @@
-# r3con v5.0.1
+# r3con v5.0.2
 
 Release corrective de sécurité et de robustesse.
 

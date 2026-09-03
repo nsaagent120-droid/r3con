@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 setup(
     name="r3con",
-    version="5.0.1",
+    version="5.0.2",
     author="r3con contributors",
     description="Advanced Binary, APK & Firmware Security Research Tool — AI-assisted",
     long_description=long_description,
