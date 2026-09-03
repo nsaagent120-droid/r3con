@@ -1,4 +1,4 @@
-# r3con v5.0.0
+# r3con v5.0.1
 
 > Outil de recherche en sécurité avancé — Binary · APK · Firmware · Code Source
 > 100% offline par défaut · Architecture en couches · 6 providers IA optionnels
@@ -677,7 +677,7 @@ MIT License — voir [LICENSE](LICENSE)
 
 ---
 
-*r3con v5.0.0 — Advanced Security Research Tool*
+*r3con v5.0.1 — Advanced Security Research Tool*
 *Binary · APK · Firmware · Kernel · 0day Research*
 
 ## Analyse réseau et protocoles passive (v2.1)

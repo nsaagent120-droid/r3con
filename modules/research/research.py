@@ -131,8 +131,8 @@ class CVEMatcher:
         error = ""
         try:
             url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={cve_id}"
-            req = urllib.request.Request(url, headers={"User-Agent":"r3con/5.0.0"})
-            with urllib.request.urlopen(req, timeout=8) as resp:
+            req = urllib.request.Request(url, headers={"User-Agent":"r3con/5.0.1"})
+            with urllib.request.urlopen(req, timeout=8) as resp:  # nosec B310 - endpoint NVD HTTPS contrôlé
                 data  = json.loads(resp.read())
                 vulns = data.get("vulnerabilities",[])
                 if vulns:

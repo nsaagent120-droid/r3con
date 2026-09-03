@@ -12,7 +12,7 @@ from pathlib import Path
 from datetime import datetime
 
 
-VERSION = "5.0.0"
+VERSION = "5.0.1"
 R3CON_HOME = Path.home() / ".r3con"
 
 
@@ -67,7 +67,11 @@ class Foundation:
                     "http://localhost:8000", "http://localhost:8080"]:
             try:
                 import urllib.request
-                urllib.request.urlopen(url, timeout=1)
+                from urllib.parse import urlparse
+                parsed = urlparse(url)
+                if parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+                    continue
+                urllib.request.urlopen(url, timeout=1)  # nosec B310 - URL loopback constante
                 return f"Local AI at {url}"
             except Exception:
                 pass

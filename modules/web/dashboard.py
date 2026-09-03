@@ -194,7 +194,7 @@ DASHBOARD_HTML = """
         </div>
         
         <div class="footer">
-            <p>r3con v5.0.0 | Advanced Binary & Firmware Security Research Tool</p>
+            <p>r3con v5.0.1 | Advanced Binary & Firmware Security Research Tool</p>
         </div>
     </div>
 

@@ -175,9 +175,9 @@ def cmd_exploit(args):
     if args.output:
         with open(args.output, 'w') as f:
             f.write(script)
-        os.chmod(args.output, 0o755)
+        os.chmod(args.output, 0o600)
         print(f"✓ Exploit script saved: {args.output}")
-        print(f"  Run: python3 {args.output}")
+        print(f"  Run with GDB: gdb -x {args.output} ./binary")
     else:
         print(script)
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "r3con"
-version = "5.0.0"
+version = "5.0.1"
 description = "Offline-first binary, source, firmware and passive network analysis toolkit"
 readme = "README.md"
 requires-python = ">=3.9"

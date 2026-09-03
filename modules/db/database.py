@@ -185,7 +185,8 @@ class AnalysisDB:
             return
         fields = ', '.join(f"{k}=?" for k in updates)
         values = list(updates.values()) + [analysis_id]
-        self.conn.cursor().execute(f"UPDATE analysis SET {fields} WHERE id = ?", values)
+        # fields est limité à la liste blanche ci-dessus ; les valeurs restent paramétrées.
+        self.conn.cursor().execute(f"UPDATE analysis SET {fields} WHERE id = ?", values)  # nosec B608
         self.conn.commit()
 
     def get_stats(self, analysis_id: str) -> Dict:

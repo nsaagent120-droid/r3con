@@ -455,9 +455,9 @@ class DependencyScanner:
         """Query OSV and return current advisories with explicit provenance."""
         import json, urllib.request
         body = json.dumps({"package": {"name": package, "ecosystem": ecosystem}, "version": version}).encode()
-        request = urllib.request.Request("https://api.osv.dev/v1/query", data=body, headers={"Content-Type": "application/json", "User-Agent": "r3con/5.0.0"})
+        request = urllib.request.Request("https://api.osv.dev/v1/query", data=body, headers={"Content-Type": "application/json", "User-Agent": "r3con/5.0.1"})
         try:
-            with urllib.request.urlopen(request, timeout=8) as response:
+            with urllib.request.urlopen(request, timeout=8) as response:  # nosec B310 - endpoint HTTPS OSV constant
                 data = json.loads(response.read().decode())
             return {"status": "ok", "source": "OSV", "package": package, "version": version, "vulnerabilities": data.get("vulns", [])}
         except Exception as exc:

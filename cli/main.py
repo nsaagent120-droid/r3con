@@ -82,7 +82,7 @@ def apply_theme(name):
     THEME = Theme(THEME_PRESETS[THEME_NAME])
     console = Console(theme=THEME)
 
-VERSION  = "5.0.0"
+VERSION  = "5.0.1"
 BANNER   = """\
  ██████╗ ██████╗  ██████╗ ██████╗ ███╗   ██╗
  ██╔══██╗╚════██╗██╔════╝██╔═══██╗████╗  ██║

@@ -89,7 +89,8 @@ FIRMWARE_VULN_PATTERNS = [
 INTERESTING_PATHS = [
     "/etc/passwd", "/etc/shadow", "/etc/hosts",
     "/etc/init.d/", "/etc/rc.d/", "/etc/crontab",
-    "/tmp/", "/var/run/", "/proc/",
+    "/tmp/",  # nosec B108 - motif recherché dans le firmware analysé
+    "/var/run/", "/proc/",
     "/usr/sbin/telnetd", "/usr/bin/gdbserver",
     "/bin/sh", "/bin/bash", "/bin/busybox",
     "update.sh", "upgrade.sh", "factory_reset",

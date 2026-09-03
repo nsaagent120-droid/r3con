@@ -48,13 +48,17 @@ class AIEnhancement:
         return "none"
 
     def _check_local_server(self, url: str) -> bool:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            return False
         try:
             import urllib.request
-            urllib.request.urlopen(url + "/api/tags", timeout=1)
+            urllib.request.urlopen(url + "/api/tags", timeout=1)  # nosec B310 - URL loopback contrôlée
             return True
         except Exception:
             try:
-                urllib.request.urlopen(url + "/v1/models", timeout=1)
+                urllib.request.urlopen(url + "/v1/models", timeout=1)  # nosec B310 - URL loopback contrôlée
                 return True
             except Exception:
                 return False

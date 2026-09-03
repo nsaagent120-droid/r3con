@@ -7,6 +7,7 @@ Détecte automatiquement les outils disponibles.
 
 import os
 import subprocess
+import tempfile
 import json
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -426,9 +427,9 @@ class AFLWrapper:
     """
 
     def __init__(self, target_path: str,
-                 output_dir: str = "/tmp/r3con_afl"):
+                 output_dir: str = None):
         self.target    = target_path
-        self.output    = output_dir
+        self.output    = output_dir or tempfile.mkdtemp(prefix="r3con-afl-")
         self.available = tool_exists("afl-fuzz")
 
     def generate_harness(self, target_func: str = None,
