@@ -1,0 +1,567 @@
+# r3con v5.0.3 PRO - Configuration complète et puissante
+# Copier vers ~/.r3con/config.yaml pour personnaliser
+# Toutes les valeurs sont surchargeables via env: R3CON_ANALYSIS_TIMEOUT=300
+
+version: "5.0.3"
+profile: "auto"  # auto | quick | deep | full | binary | firmware | apk | network | bugbounty
+
+# ── Analyse centrale ──
+analysis:
+  default_depth: "deep"       # quick | deep | full
+  default_focus: "all"        # all | memory | crypto | kernel | race | injection | xss
+  max_file_size_mb: 500
+  max_binary_size_mb: 500
+  max_firmware_size_mb: 1024
+  max_pcap_size_mb: 500
+  max_apk_size_mb: 500
+  parallel: true
+  max_workers: 4              # 1-16, auto-adapté au CPU
+  timeout: 120                # secondes par tâche
+  save_to_db: true
+  cache_enabled: true
+  cache_ttl_days: 7
+  cache_max_entries: 5000
+  artifact_retention_days: 7
+  cleanup_old_artifacts: true
+
+# ── Limites extensibles (configurables) ──
+limits:
+  max_strings: 10000
+  max_functions: 2000
+  max_imports: 5000
+  max_exports: 5000
+  max_sections: 100
+  max_findings: 10000
+  max_matches: 1000
+  max_depth: 20
+  max_chain_length: 50
+  max_output_mb: 10
+  max_log_mb: 5
+  max_yara_matches: 100
+  max_rop_gadgets: 500
+  max_entropy_blocks: 5000
+  max_pcap_packets: 100000
+  max_pcap_flows: 1000
+  max_apk_classes: 5000
+
+# ── Désassemblage ──
+disasm:
+  default_arch: "auto"        # auto | x86 | x86_64 | arm | arm64 | mips | riscv
+  default_output: "pseudocode" # asm | pseudocode | c | cfg | all
+  engine: "auto"              # auto | capstone | r2 | rizin | ghidra | angr
+  max_instructions: 5000
+  show_bytes: false
+  syntax: "intel"             # intel | att
+  color: true
+
+# ── Binaire ──
+binary:
+  checksec: true
+  rop_gadgets: true
+  strings: true
+  imports: true
+  exports: true
+  sections: true
+  protections: true
+  detect_packer: true
+  detect_crypto: true
+  entropy_analysis: true
+  anti_debug: true
+  suspicious_sections: true
+  # Outils externes
+  use_checksec: true
+  use_ropper: true
+  use_one_gadget: true
+  use_objdump: true
+  use_readelf: true
+  max_rop_search: 20
+
+# ── Firmware ──
+firmware:
+  entropy_block_size: 4096
+  entropy_threshold: 7.0
+  min_string_length: 6
+  extract: false              # true pour extraction auto (nécessite binwalk)
+  extract_output: "./fw_extracted"
+  detect_backdoors: true
+  detect_creds: true
+  detect_keys: true
+  detect_certs: true
+  detect_urls: true
+  detect_ips: true
+  max_strings: 10000
+  high_entropy_types:
+    - encrypted
+    - compressed
+    - certificate
+  # Outils
+  use_binwalk: true
+  use_firmwalker: false
+  use_sasquatch: false
+  use_ubi_reader: false
+  use_jefferson: false
+
+# ── APK ──
+apk:
+  decompile: false            # true = lance jadx/apktool (lourd)
+  dex_analysis: true
+  manifest_analysis: true
+  permission_analysis: true
+  url_extraction: true
+  secret_detection: true
+  native_lib_analysis: true
+  cert_analysis: true
+  debuggable_check: true
+  backup_check: true
+  exported_components: true
+  max_dex_strings: 5000
+  # Outils
+  use_jadx: false
+  use_apktool: false
+  use_dex2jar: false
+
+# ── Réseau ──
+network:
+  max_packets: 100000
+  max_flows: 1000
+  max_bytes: 268435456        # 256MB
+  detect_cleartext: true
+  detect_legacy: true
+  extract_iocs: true
+  dns_analysis: true
+  http_analysis: true
+  tls_analysis: true
+  protocol_detection: true
+  legacy_protocols:
+    - telnet
+    - ftp
+    - http
+    - pop3
+    - imap
+    - smtp
+    - snmp
+    - ldap
+  live_capture:
+    default_interface: "any"
+    default_duration: 30
+    default_max_packets: 10000
+    require_root: true
+    allow_filter: true
+    max_filter_length: 1000
+  # Outils
+  use_tshark: true
+  use_zeek: true
+  use_tcpdump: false
+
+# ── Audit source ──
+audit:
+  languages:
+    - c
+    - cpp
+    - python
+    - java
+    - go
+    - rust
+    - js
+    - php
+    - rb
+  checks:
+    memory: true
+    crypto: true
+    race: true
+    kernel: true
+    injection: true
+    xss: true
+    sqli: true
+    hardcoded_secrets: true
+    weak_crypto: true
+    insecure_random: true
+    format_string: true
+    integer_overflow: true
+    null_deref: true
+    use_after_free: true
+    double_free: true
+    command_injection: true
+    path_traversal: true
+    ssrf: true
+  severity_filter: "low"      # info | low | medium | high | critical
+  confidence_filter: 0.0      # 0.0-1.0
+  max_file_size_kb: 2048
+  exclude_patterns:
+    - "*/node_modules/*"
+    - "*/vendor/*"
+    - "*/.git/*"
+    - "*/build/*"
+
+# ── Outils externes (35+ outils) ──
+external_tools:
+  auto_detect: true
+  auto_install: false         # true = tente install auto (nécessite root)
+  prefer:
+    disasm: "capstone"        # capstone | r2 | rizin | ghidra | objdump | angr
+    decompiler: "r2"          # r2 | ghidra | angr | jadx
+    firmware: "binwalk"       # binwalk | firmwalker | sasquatch
+    apk: "internal"           # internal | jadx | apktool
+    network: "internal"       # internal | tshark | zeek
+    dynamic: "gdb"            # gdb | qemu | frida | strace
+    rop: "ropper"             # ropper | r2 | one_gadget
+    protections: "checksec"   # checksec | readelf | r2
+  timeout:
+    default: 60
+    ghidra: 180
+    angr: 120
+    jadx: 120
+    apktool: 120
+    binwalk: 120
+    r2: 60
+    gdb: 60
+    frida: 30
+    qemu: 60
+    afl: 300
+  enabled:
+    # Binaire (12)
+    r2: true
+    rizin: true
+    ghidra: false             # opt-in, lourd, 1GB+
+    checksec: true
+    ropper: true
+    one_gadget: true
+    objdump: true
+    readelf: true
+    nm: true
+    strings: true
+    file: true
+    angr: false               # pip install angr (2GB+)
+
+    # Firmware (5)
+    binwalk: true
+    firmwalker: false
+    sasquatch: false
+    ubi_reader: false
+    jefferson: false
+
+    # APK (5)
+    jadx: false
+    apktool: false
+    dex2jar: false
+    apksigner: true
+    zipalign: true
+
+    # Réseau (5)
+    tshark: true
+    zeek: true
+    tcpdump: true
+    wireshark: false
+    capinfos: true
+
+    # Dynamique (8)
+    gdb: true
+    pwndbg: true
+    gef: true
+    qemu: false
+    frida: false
+    strace: true
+    ltrace: true
+    valgrind: false
+
+    # Fuzzing (3)
+    afl: false
+    honggfuzz: false
+    radamsa: false
+
+    # Misc (4)
+    yara: true
+    clamav: false
+    ssdeep: false
+    binwalk_misc: true
+
+  paths:
+    # Chemins custom, surcharge via env R3CON_TOOL_<NAME>
+    # ghidra: "/opt/ghidra/support/analyzeHeadless"
+    # jadx: "/opt/jadx/bin/jadx"
+    # angr: null  # python lib
+
+  # Chaînage automatique
+  chaining:
+    enabled: true
+    binary_chain:
+      - checksec
+      - strings
+      - readelf
+      - objdump
+      - ropper
+      - one_gadget
+      - binwalk
+    firmware_chain:
+      - binwalk
+      - strings
+      - firmwalker
+    apk_chain:
+      - apktool
+      - jadx
+      - strings
+
+# ── Reporting ──
+reporting:
+  format: "md"                # md | html | json | sarif | all
+  output_dir: "~/.r3con/reports"
+  include_code_snippets: true
+  include_cvss: true
+  include_cwe: true
+  include_fix: true
+  include_evidence: true
+  include_graph: true
+  max_snippet_length: 500
+  sarif:
+    enabled: false
+    output: null              # ~/.r3con/reports/*.sarif
+    version: "2.1.0"
+  html:
+    theme: "dark"             # dark | light | hacker
+    include_graph: true
+    include_raw: false
+  json:
+    pretty: true
+    include_observations: true
+
+# ── IA (optionnel) ──
+ai:
+  enabled: "auto"             # auto | true | false
+  provider: "auto"            # auto | local | openai | anthropic | together | deepseek | gemini | groq
+  local_url: "http://localhost:11434"
+  local_model: "auto"
+  max_tokens: 4096
+  timeout: 120
+  temperature: 0.2
+  multi_ai: false
+  consensus_threshold: 0.7
+  fallback_offline: true
+  cache_responses: true
+
+# ── Expert mode ──
+expert_mode:
+  enabled: false              # export R3CON_EXPERT_MODE=true
+  cvss_scoring: true
+  attack_scenarios: true
+  priority_matrix: true
+  executive_summary: true
+  exploitation_techniques: true
+  risk_rating: true
+
+# ── Dashboard ──
+dashboard:
+  enabled: false
+  port: 5000
+  host: "127.0.0.1"
+  auto_refresh: 30
+  auth: false
+  auth_user: "admin"
+  # auth_pass: env R3CON_DASHBOARD_PASS
+  max_upload_mb: 100
+
+# ── Profils prédéfinis ──
+profiles:
+  quick:
+    description: "Scan rapide, outils légers uniquement"
+    analysis:
+      max_workers: 2
+      timeout: 30
+      max_file_size_mb: 100
+    limits:
+      max_strings: 1000
+      max_findings: 100
+      max_functions: 200
+    external_tools:
+      enabled:
+        ghidra: false
+        angr: false
+        qemu: false
+        jadx: false
+        binwalk: false
+      chaining:
+        enabled: false
+
+  deep:
+    description: "Analyse approfondie, équilibrée"
+    analysis:
+      max_workers: 4
+      timeout: 120
+    external_tools:
+      prefer:
+        disasm: "r2"
+        decompiler: "r2"
+      enabled:
+        checksec: true
+        ropper: true
+        binwalk: true
+
+  full:
+    description: "Capacités maximales, tous les outils"
+    analysis:
+      max_workers: 6
+      timeout: 300
+      max_file_size_mb: 1024
+    limits:
+      max_strings: 50000
+      max_findings: 50000
+      max_functions: 5000
+      max_rop_gadgets: 1000
+    external_tools:
+      enabled:
+        ghidra: true
+        angr: true
+        jadx: true
+        apktool: true
+        binwalk: true
+        firmwalker: true
+        qemu: true
+        frida: false
+      chaining:
+        enabled: true
+    binary:
+      rop_gadgets: true
+      detect_packer: true
+    firmware:
+      extract: true
+    apk:
+      decompile: true
+
+  binary:
+    description: "Focus binaire, protections + ROP + disasm"
+    external_tools:
+      prefer:
+        disasm: "r2"
+        decompiler: "ghidra"
+        rop: "ropper"
+        protections: "checksec"
+      enabled:
+        checksec: true
+        ropper: true
+        one_gadget: true
+        objdump: true
+        readelf: true
+        r2: true
+        ghidra: false
+    binary:
+      checksec: true
+      rop_gadgets: true
+      detect_packer: true
+
+  firmware:
+    description: "Focus firmware, extraction + secrets"
+    firmware:
+      extract: true
+      detect_backdoors: true
+      detect_creds: true
+      detect_keys: true
+    external_tools:
+      enabled:
+        binwalk: true
+        firmwalker: true
+        sasquatch: true
+        strings: true
+      chaining:
+        enabled: true
+
+  apk:
+    description: "Focus APK, decompilation + manifest"
+    apk:
+      decompile: true
+      dex_analysis: true
+      manifest_analysis: true
+    external_tools:
+      enabled:
+        jadx: true
+        apktool: true
+        apksigner: true
+      chaining:
+        enabled: true
+
+  network:
+    description: "Focus PCAP, décodeurs externes"
+    network:
+      max_packets: 500000
+      max_flows: 5000
+    external_tools:
+      enabled:
+        tshark: true
+        zeek: true
+        capinfos: true
+        tcpdump: false
+
+  bugbounty:
+    description: "Bug bounty, secrets + vulns critiques"
+    audit:
+      checks:
+        hardcoded_secrets: true
+        injection: true
+        xss: true
+        sqli: true
+        ssrf: true
+        path_traversal: true
+        command_injection: true
+    reporting:
+      include_evidence: true
+      include_fix: true
+    limits:
+      max_findings: 20000
+
+  stealth:
+    description: "Mode furtif, pas d'outils bruyants, offline only"
+    external_tools:
+      enabled:
+        tshark: false
+        zeek: false
+        tcpdump: false
+        qemu: false
+        frida: false
+        strace: false
+    network:
+      live_capture:
+        require_root: false
+    analysis:
+      cache_enabled: false
+
+  exploit:
+    description: "Mode exploitation, ROP + gadgets + protections"
+    binary:
+      rop_gadgets: true
+      checksec: true
+    external_tools:
+      enabled:
+        ropper: true
+        one_gadget: true
+        checksec: true
+        r2: true
+        gdb: true
+        pwndbg: true
+        gef: true
+      prefer:
+        rop: "ropper"
+        protections: "checksec"
+
+# ── Logging ──
+logging:
+  level: "info"               # debug | info | warning | error | critical
+  file: null                  # ~/.r3con/r3con.log ou null pour stdout
+  json: false                 # true = logs JSON
+  max_size_mb: 10
+  backup_count: 3
+  include_timestamp: true
+
+# ── Performance ──
+performance:
+  use_cache: true
+  cache_dir: "~/.cache/r3con"
+  use_parallel: true
+  max_memory_mb: 2048
+  low_memory_mode: false      # true = désactive les gros outils
+  profile_memory: false
+
+# ── Sécurité ──
+security:
+  allow_live_capture: true    # false = désactive capture réseau
+  allow_dynamic: true         # false = désactive gdb/strace
+  allow_extraction: true      # false = désactive binwalk extraction
+  sandbox: false              # true = tente sandbox (expérimental)
+  max_sandbox_memory_mb: 1024

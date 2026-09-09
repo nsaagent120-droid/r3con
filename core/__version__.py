@@ -1,3 +1,4 @@
-"""Single source of truth for version."""
-__version__ = "5.0.3"
-__version_info__ = (5, 0, 3)
+"""Single source of truth for version - PRO."""
+__version__ = "5.1.0"
+__version_info__ = (5, 1, 0)
+__codename__ = "Titan"

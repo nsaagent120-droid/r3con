@@ -1,90 +1,152 @@
-# r3con v4.3.0 — Configuration
-# ─────────────────────────────────────────────────────────
+# r3con v5.0.3 PRO - Configuration puissante et complète
 # Copier vers ~/.r3con/config.yaml pour personnaliser
+# Surcharges env: R3CON_ANALYSIS_TIMEOUT=300, R3CON_TOOL_GHIDRA=/opt/ghidra/...
+# Voir config.pro.yaml pour toutes les options
 
-# ── Couche 1 : Foundation (toujours actif) ─────────────
-
-version: "4.3.0"
-
-# ── Couche 2 : Analysis Core (toujours actif) ──────────
+version: "5.0.3"
+profile: "auto"
 
 analysis:
-  default_depth: "deep"       # quick | deep | full
-  default_focus: "all"        # all | memory | crypto | kernel | race
-  max_file_size_mb: 100
-  parallel_analysis: true     # Analyser plusieurs modules en parallèle
-  save_to_db: true            # Sauvegarder résultats en SQLite
+  default_depth: "deep"
+  default_focus: "all"
+  max_file_size_mb: 500
+  max_binary_size_mb: 500
+  max_firmware_size_mb: 1024
+  max_pcap_size_mb: 500
+  parallel: true
+  max_workers: 4
+  timeout: 120
+  save_to_db: true
+  cache_enabled: true
+  cache_ttl_days: 7
+
+limits:
+  max_strings: 10000
+  max_functions: 2000
+  max_findings: 10000
+  max_depth: 20
+  max_output_mb: 10
 
 disasm:
-  default_arch: "auto"        # auto | x86 | x86_64 | arm | arm64 | mips
+  default_arch: "auto"
   default_output: "pseudocode"
+  engine: "auto"
+  max_instructions: 5000
+
+binary:
+  checksec: true
+  rop_gadgets: true
+  strings: true
+  imports: true
+  protections: true
+  detect_packer: true
 
 firmware:
   entropy_block_size: 4096
   entropy_threshold: 7.0
   min_string_length: 6
+  extract: false
+  detect_backdoors: true
+  detect_creds: true
 
-# ── Couche 3 : Intelligence (optionnel) ────────────────
-# Activer: export R3CON_EXPERT_MODE=true
+apk:
+  dex_analysis: true
+  manifest_analysis: true
+  permission_analysis: true
+  secret_detection: true
 
-expert_mode:
-  # Auto-activé si R3CON_EXPERT_MODE=true
-  cvss_scoring: true
-  attack_scenarios: true
-  priority_matrix: true
-  executive_summary: true
-  exploitation_techniques: true
+network:
+  max_packets: 100000
+  max_flows: 1000
+  detect_cleartext: true
+  extract_iocs: true
 
-# ── Couche 4 : AI Enhancement (optionnel) ─────────────
-# Configurer UNE des options suivantes:
+audit:
+  languages: [c, cpp, python, java, go, rust, js, php]
+  checks:
+    memory: true
+    crypto: true
+    injection: true
+    hardcoded_secrets: true
+  severity_filter: "low"
 
-ai:
-  # Option A : IA locale (GRATUIT - aucune clé API)
-  # Lancer Ollama:  ollama serve
-  # Lancer LM Studio: port 1234
-  # local_url: "http://localhost:11434"
-  # local_model: "auto"           # auto-détecte le meilleur modèle
+external_tools:
+  auto_detect: true
+  prefer:
+    disasm: "capstone"
+    decompiler: "r2"
+    firmware: "binwalk"
+    apk: "internal"
+    network: "internal"
+    dynamic: "gdb"
+  timeout:
+    default: 60
+    ghidra: 180
+    angr: 120
+    jadx: 120
+    binwalk: 120
+  enabled:
+    r2: true
+    rizin: true
+    ghidra: false
+    checksec: true
+    ropper: true
+    one_gadget: true
+    objdump: true
+    readelf: true
+    strings: true
+    binwalk: true
+    jadx: false
+    apktool: false
+    tshark: true
+    zeek: true
+    gdb: true
+    pwndbg: true
+    strace: true
+    yara: true
+  chaining:
+    enabled: true
 
-  # Option B : Multi-AI local (plusieurs modèles en parallèle)
-  # multi_ai: true                # export R3CON_MULTI_AI=true
-
-  # Option C : NVIDIA Nemotron via Together AI (GRATUIT)
-  # export TOGETHER_API_KEY=...   # https://api.together.ai/
-
-  # Option D : DeepSeek (très bon marché)
-  # export DEEPSEEK_API_KEY=sk-...  # https://platform.deepseek.com/
-
-  # Option E : Google Gemini (gratuit avec limites)
-  # export GEMINI_API_KEY=...     # https://aistudio.google.com/
-
-  # Option F : Groq (gratuit, très rapide)
-  # export GROQ_API_KEY=gsk-...   # https://console.groq.com/
-
-  # Option G : Anthropic Claude (payant, meilleure qualité)
-  # export ANTHROPIC_API_KEY=sk-ant-...
-
-  max_tokens: 2048
-  timeout: 120
-
-# ── Rapports ──────────────────────────────────────────
-
-reports:
-  format: "md"                # md | html | json
+reporting:
+  format: "md"
   output_dir: "~/.r3con/reports"
-  include_code_snippets: true
   include_cvss: true
   include_cwe: true
-  include_fix: true
 
-# ── Dashboard ─────────────────────────────────────────
+ai:
+  enabled: "auto"
+  provider: "auto"
+  max_tokens: 4096
+  timeout: 120
+
+expert_mode:
+  enabled: false
 
 dashboard:
   port: 5000
   host: "127.0.0.1"
-  auto_refresh: 30            # secondes
 
-# ── Sessions ──────────────────────────────────────────
+logging:
+  level: "info"
+  file: null
 
-sessions:
-  max_sessions: 500
-  storage_dir: "~/.r3con/sessions"
+profiles:
+  quick:
+    analysis: {max_workers: 2, timeout: 30}
+    limits: {max_strings: 1000, max_findings: 100}
+  deep:
+    analysis: {max_workers: 4, timeout: 120}
+  full:
+    analysis: {max_workers: 6, timeout: 300, max_file_size_mb: 1024}
+    limits: {max_strings: 50000, max_findings: 50000}
+    external_tools: {enabled: {ghidra: true, angr: true, jadx: true, binwalk: true}}
+  binary:
+    external_tools: {prefer: {disasm: "r2", decompiler: "ghidra"}}
+  firmware:
+    firmware: {extract: true}
+  apk:
+    apk: {decompile: true}
+  network:
+    network: {max_packets: 500000}
+  bugbounty:
+    audit: {checks: {hardcoded_secrets: true, injection: true, xss: true}}

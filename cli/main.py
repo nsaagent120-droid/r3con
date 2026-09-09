@@ -59,6 +59,17 @@ from modules.integration.tool_manager import ToolManager
 from modules.integration.reverse_adapters import R2Adapter
 from modules.dynamic.gdb_analyzer import DynamicAnalyzer
 from modules.orchestration.orchestrator import Orchestrator
+from core.config_manager import get_config, ConfigManager
+try:
+    from modules.orchestration.enhanced_orchestrator import EnhancedOrchestrator
+    ENHANCED_AVAILABLE = True
+except ImportError:
+    ENHANCED_AVAILABLE = False
+try:
+    from modules.integration.advanced_adapters import EnhancedToolChain
+    ADVANCED_TOOLS_AVAILABLE = True
+except ImportError:
+    ADVANCED_TOOLS_AVAILABLE = False
 
 # ── Theme ─────────────────────────────────────────────────────
 THEME_PRESETS = {
@@ -665,6 +676,81 @@ def tools_plan(names):
     plan = ToolManager().install_plan(list(names) or None)
     for item in plan:
         console.print(json.dumps(item, ensure_ascii=False))
+
+
+@tools.command("summary")
+def tools_summary():
+    """Show summary of all external tools by category."""
+    mgr = ToolManager()
+    summary = mgr.summary()
+
+    t = Table(box=box.SIMPLE_HEAVY, title=f"Tool Summary - {summary['present']}/{summary['total']} available")
+    t.add_column("Category", style="cyan")
+    t.add_column("Present/Total", style="white")
+    t.add_column("Tools", style="dim")
+    for cat, data in summary["by_category"].items():
+        t.add_row(cat, f"{data['present']}/{data['total']}", ", ".join(data["tools"][:8]))
+    console.print(t)
+
+    console.print(f"\n[bold]Capabilities:[/]")
+    for cap, count in summary["capabilities"].items():
+        console.print(f"  {cap}: {count} tools")
+
+
+@tools.command("enhanced")
+@click.argument("target", type=click.Path(exists=True, dir_okay=False))
+@click.option("--profile", default="binary", type=click.Choice(["binary", "firmware", "apk", "full"]), help="Analysis chain")
+@click.option("--json-output", is_flag=True)
+def tools_enhanced(target, profile, json_output):
+    """Run enhanced toolchain with 10+ external tools chained."""
+    if not ADVANCED_TOOLS_AVAILABLE:
+        raise click.ClickException("Advanced adapters not available")
+
+    from core.config_manager import get_config
+    cfg = get_config(profile=profile)
+
+    chain = EnhancedToolChain(target, config=cfg.to_dict())
+
+    if profile == "binary":
+        result = chain.full_binary_analysis()
+    elif profile == "firmware":
+        result = chain.full_firmware_analysis()
+    elif profile == "apk":
+        result = chain.full_apk_analysis()
+    else:
+        result = chain.full_binary_analysis()
+
+    if json_output:
+        click.echo(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        section(f"ENHANCED TOOLCHAIN - {profile.upper()}")
+        info(f"Target: {target}")
+        for tool, res in result.get("observations", {}).items():
+            status = res.get("status", "unknown") if isinstance(res, dict) else "unknown"
+            console.print(f"[{status}] {tool} — {res.get('engine', '') if isinstance(res, dict) else ''}")
+        console.print(f"\nFindings: {len(result.get('findings', []))}")
+
+
+@tools.command("check")
+@click.argument("tool_name")
+def tools_check(tool_name):
+    """Check single tool availability and capabilities."""
+    mgr = ToolManager()
+    for row in mgr.inspect():
+        if row["key"] == tool_name:
+            console.print(Panel(
+                f"[cyan]Tool:[/] {row['key']}\n"
+                f"[cyan]Executables:[/] {', '.join(row['executables'])}\n"
+                f"[cyan]Present:[/] {'yes' if row['present'] else 'no'}\n"
+                f"[cyan]Path:[/] {row['path'] or 'not found'}\n"
+                f"[cyan]Version:[/] {row['version'] or 'unknown'}\n"
+                f"[cyan]Category:[/] {row['category']}\n"
+                f"[cyan]Capabilities:[/] {', '.join(row['capabilities'])}\n"
+                f"[cyan]Purpose:[/] {row['purpose']}",
+                title=f"Tool: {tool_name}", border_style="green" if row["present"] else "red"
+            ))
+            return
+    raise click.ClickException(f"Unknown tool: {tool_name}")
 
 
 # ═════════════════════════════════════════════════════════════
@@ -1668,6 +1754,175 @@ def interactive_mode(ctx):
             console.print(f"  [bold red]Error:[/] {exc}")
         except (click.UsageError, ValueError) as exc:
             console.print(f"  [bold yellow]Usage:[/] {exc}")
+
+
+
+# ═════════════════════════════════════════════════════════════
+# CONFIG & ENHANCED ANALYSIS (PRO)
+# ═════════════════════════════════════════════════════════════
+
+@cli.group()
+def config():
+    """Gestion de la configuration puissante et profils PRO."""
+
+
+@config.command("show")
+@click.option("--profile", default=None, help="Profil à afficher")
+@click.option("--json-output", is_flag=True, help="Sortie JSON")
+def config_show(profile, json_output):
+    """Afficher la configuration actuelle."""
+    cfg = get_config(profile=profile, force_reload=True)
+
+    if json_output:
+        click.echo(json.dumps(cfg.to_dict(), indent=2, ensure_ascii=False))
+        return
+
+    console.print(Panel(f"[bold cyan]r3con v{cfg.get('version')} - Profile: {cfg.profile_name}[/]\n"
+                        f"Config: {cfg.config_path or 'defaults only'}",
+                        title="Configuration", border_style="cyan"))
+
+    t = Table(box=box.SIMPLE_HEAVY, title="Analyse")
+    t.add_column("Paramètre", style="cyan")
+    t.add_column("Valeur", style="white")
+    t.add_row("Timeout", str(cfg.get("analysis.timeout")))
+    t.add_row("Max workers", str(cfg.get("analysis.max_workers")))
+    t.add_row("Max file size", f"{cfg.get('analysis.max_file_size_mb')} MB")
+    t.add_row("Cache", "enabled" if cfg.get_bool("analysis.cache_enabled") else "disabled")
+    console.print(t)
+
+    t2 = Table(box=box.SIMPLE_HEAVY, title="Limites")
+    t2.add_column("Limite", style="cyan")
+    t2.add_column("Valeur", style="white")
+    t2.add_row("Max strings", str(cfg.get("limits.max_strings")))
+    t2.add_row("Max findings", str(cfg.get("limits.max_findings")))
+    t2.add_row("Max functions", str(cfg.get("limits.max_functions")))
+    console.print(t2)
+
+
+@config.command("profiles")
+def config_profiles():
+    """Lister tous les profils disponibles."""
+    cfg = get_config(force_reload=True)
+    profiles = cfg.get("profiles", {})
+
+    t = Table(box=box.SIMPLE_HEAVY, title="Profils disponibles")
+    t.add_column("Profil", style="bold cyan", width=12)
+    t.add_column("Description", style="white")
+    t.add_column("Workers", style="dim", width=8)
+    t.add_column("Timeout", style="dim", width=8)
+
+    for name, data in profiles.items():
+        desc = data.get("description", "")[:50]
+        workers = str(data.get("analysis", {}).get("max_workers", cfg.get("analysis.max_workers")))
+        timeout = str(data.get("analysis", {}).get("timeout", cfg.get("analysis.timeout")))
+        style = "bold green" if name == cfg.profile_name else "white"
+        t.add_row(f"[{style}]{name}[/{style}]", desc, workers, timeout)
+
+    console.print(t)
+    console.print("\n[dim]Usage: r3con analyze --profile full ./binary[/]")
+
+
+@config.command("init")
+@click.option("--output", default="~/.r3con/config.yaml", help="Fichier de sortie")
+@click.option("--profile", default="deep", type=click.Choice(["quick", "deep", "full", "binary", "firmware", "apk", "network", "bugbounty"]), help="Profil de base")
+def config_init(output, profile):
+    """Créer un fichier de configuration personnalisé."""
+    import shutil
+    output_path = Path(output).expanduser()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    pro_config = Path(__file__).parent.parent / "config.pro.yaml"
+    if pro_config.is_file():
+        shutil.copy(pro_config, output_path)
+        console.print(f"[green]✓[/] Config PRO copiée vers {output_path}")
+    else:
+        cfg = ConfigManager(profile=profile)
+        cfg.save(str(output_path))
+        console.print(f"[green]✓[/] Config créée vers {output_path}")
+
+
+@config.command("env")
+def config_env():
+    """Afficher les variables d'environnement supportées."""
+    t = Table(box=box.SIMPLE_HEAVY, title="Variables d'environnement R3CON_*")
+    t.add_column("Variable", style="cyan", width=32)
+    t.add_column("Description", style="white")
+    t.add_column("Exemple", style="dim")
+
+    env_vars = [
+        ("R3CON_CONFIG", "Chemin config YAML", "~/.r3con/config.yaml"),
+        ("R3CON_PROFILE", "Profil actif", "full, deep, quick..."),
+        ("R3CON_TIMEOUT", "Timeout global", "300"),
+        ("R3CON_TOOL_GHIDRA", "Chemin Ghidra", "/opt/ghidra/..."),
+        ("R3CON_TOOL_JADX", "Chemin JADX", "/opt/jadx/bin/jadx"),
+        ("R3CON_EXPERT_MODE", "Mode expert", "true/false"),
+        ("R3CON_ANALYSIS_MAX_FILE_SIZE_MB", "Taille max", "1024"),
+    ]
+    for var, desc, ex in env_vars:
+        t.add_row(var, desc, ex)
+    console.print(t)
+
+
+@cli.command("analyze-pro")
+@click.argument("target", type=click.Path(exists=True, dir_okay=False))
+@click.option("--profile", default="auto", type=click.Choice(["auto", "quick", "deep", "full", "binary", "firmware", "apk", "network", "bugbounty", "exploit", "stealth"]), help="Profil puissant")
+@click.option("--config", "config_path", default=None, type=click.Path(exists=True), help="Fichier config YAML")
+@click.option("--timeout", default=None, type=int, help="Timeout override")
+@click.option("--workers", default=None, type=int, help="Workers override")
+@click.option("--max-mb", default=None, type=int, help="Max file size MB override")
+@click.option("--with-ghidra", is_flag=True, help="Activer Ghidra (lourd)")
+@click.option("--with-angr", is_flag=True, help="Activer angr symbolic")
+@click.option("--with-jadx", is_flag=True, help="Activer JADX")
+@click.option("--chain/--no-chain", default=True, help="Chaînage outils externes")
+@click.option("--json-output", type=click.Path(dir_okay=False), help="Rapport JSON")
+def analyze_pro_command(target, profile, config_path, timeout, workers, max_mb, with_ghidra, with_angr, with_jadx, chain, json_output):
+    """Analyse PRO avec config puissante, 35+ outils, chaînage et profils."""
+    if not ENHANCED_AVAILABLE:
+        console.print("[yellow]Enhanced orchestrator non disponible, fallback vers classic[/]")
+        result = Orchestrator(target, profile=profile, timeout=timeout or 120).run()
+    else:
+        overrides = {}
+        if timeout:
+            overrides["analysis.timeout"] = timeout
+        if workers:
+            overrides["analysis.max_workers"] = workers
+        if max_mb:
+            overrides["analysis.max_file_size_mb"] = max_mb
+        if with_ghidra:
+            overrides["external_tools.enabled.ghidra"] = True
+        if with_angr:
+            overrides["external_tools.enabled.angr"] = True
+        if with_jadx:
+            overrides["external_tools.enabled.jadx"] = True
+        overrides["external_tools.chaining.enabled"] = chain
+
+        result = EnhancedOrchestrator(target, profile=profile, config_path=config_path, **overrides).run()
+
+    if json_output:
+        Path(json_output).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        console.print(f"Report written: {json_output}")
+
+    section(f"R3CON PRO ORCHESTRATION - {profile.upper()}")
+    target_info = result.get("target", {})
+    if isinstance(target_info, dict):
+        info(f"Target: {target_info.get('path', target)} | Kind: {target_info.get('kind')} | Confidence: {target_info.get('confidence')}")
+    info(f"Profile: {result.get('profile', profile)} | Chain: {'enabled' if chain else 'disabled'}")
+
+    for name, value in result.get("results", {}).items():
+        if isinstance(value, dict):
+            status = value.get("status", "unknown")
+            engine = value.get("engine", "")
+            color = "green" if status == "ok" else "yellow" if status == "partial" else "red"
+            console.print(f"[{color}][{status}][/{color}] {name:20} — {engine}")
+
+    console.print(f"\n[bold]Findings:[/] {len(result.get('findings', []))} | [bold]Duration:[/] {result.get('duration_ms', 0)} ms | [bold]Status:[/] {result.get('status')}")
+
+    tool_summary = result.get("tool_summary", {})
+    if tool_summary:
+        console.print(f"[dim]Tools: {tool_summary.get('present', 0)}/{tool_summary.get('total', 0)} available[/]")
+
+    show_findings(result.get("findings", [])[:20])
+
 
 
 def _help():
