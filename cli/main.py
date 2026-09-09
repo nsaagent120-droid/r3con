@@ -111,6 +111,7 @@ from cli.groups.workspace import workspace as workspace_group
 from cli.groups.fuzzing import fuzzing as fuzzing_group
 from cli.groups.agent import agent as agent_group
 from cli.groups.exploit import exploit as exploit_group
+from cli.groups.power import scan_command, doctor_command, reports_group
 from cli.groups.interactive import (
     r2_command, gdb_command,
     session_cmd, plugins_group, interactive_mode
@@ -171,6 +172,10 @@ cli.add_command(workspace_group)
 cli.add_command(fuzzing_group)
 cli.add_command(agent_group)
 cli.add_command(exploit_group)
+cli.add_command(scan_command)
+cli.add_command(doctor_command, name="tools-doctor")
+cli.add_command(reports_group)
+tools.add_command(doctor_command)
 
 # Direct commands
 cli.add_command(analyze_command)

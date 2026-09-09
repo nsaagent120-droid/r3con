@@ -1,6 +1,13 @@
 import json
 
-from core.result_schema import Finding, FindingStatus, deduplicate_findings, normalize_findings
+from core.result_schema import (
+    Finding,
+    FindingStatus,
+    deduplicate_findings,
+    make_result,
+    normalize_findings,
+    summarize_findings,
+)
 
 
 def test_finding_has_stable_id_and_serializes_json():
@@ -27,3 +34,21 @@ def test_deduplication_preserves_independent_corroboration():
     assert len(merged) == 1
     assert merged[0]["confidence"] > 0.7
     assert "corroborated" in merged[0]["tags"]
+
+
+def test_legacy_severities_are_canonical_and_unknown_is_info():
+    assert Finding.from_mapping({"type": "x", "severity": "warning"}).severity == "MEDIUM"
+    assert Finding.from_mapping({"type": "x", "severity": "not-a-severity"}).severity == "INFO"
+
+
+def test_make_result_contains_bounded_risk_summary():
+    result = make_result("ok", findings=[
+        {"type": "x", "severity": "CRITICAL", "confidence": 1.0, "status": "confirmed"},
+        {"type": "y", "severity": "low", "confidence": 0.5},
+    ])
+    summary = result["finding_summary"]
+    assert summary["total"] == 2
+    assert summary["counts"]["CRITICAL"] == 1
+    assert summary["confirmed"] == 1
+    assert 0 <= summary["score"] <= 100
+    assert summarize_findings([])["rating"] == "none"

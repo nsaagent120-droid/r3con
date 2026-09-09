@@ -32,6 +32,27 @@ class FindingStatus(str, Enum):
     FALSE_POSITIVE = "false-positive"
 
 
+SEVERITY_ALIASES = {
+    "CRIT": "CRITICAL",
+    "SEVERE": "CRITICAL",
+    "WARNING": "MEDIUM",
+    "WARN": "MEDIUM",
+    "MODERATE": "MEDIUM",
+    "MED": "MEDIUM",
+    "MINOR": "LOW",
+    "NOTE": "INFO",
+    "INFORMATIONAL": "INFO",
+}
+SEVERITY_WEIGHTS = {"CRITICAL": 10, "HIGH": 7, "MEDIUM": 4, "LOW": 1, "INFO": 0}
+
+
+def normalize_severity(value: Any) -> str:
+    """Return one of the canonical severities while accepting legacy aliases."""
+    severity = str(value or "INFO").strip().upper().replace("-", "_")
+    severity = SEVERITY_ALIASES.get(severity, severity)
+    return severity if severity in SEVERITY_WEIGHTS else "INFO"
+
+
 @dataclass
 class Evidence:
     source: str = ""
@@ -63,7 +84,7 @@ class Finding:
 
     def __post_init__(self) -> None:
         self.finding_type = str(self.finding_type or "observation")
-        self.severity = str(self.severity or "INFO").upper()
+        self.severity = normalize_severity(self.severity)
         try:
             self.confidence = max(0.0, min(1.0, float(self.confidence)))
         except (TypeError, ValueError):
@@ -132,6 +153,23 @@ def normalize_findings(findings: Iterable[Any], **context: Any) -> List[Dict[str
     return [Finding.from_mapping(item, **context).to_dict() for item in findings]
 
 
+def summarize_findings(findings: Iterable[Any]) -> Dict[str, Any]:
+    """Build a deterministic risk summary without changing the findings list."""
+    normalized = [Finding.from_mapping(item) for item in findings]
+    counts = {severity: 0 for severity in SEVERITY_WEIGHTS}
+    weighted_score = 0.0
+    confirmed = 0
+    for finding in normalized:
+        counts[finding.severity] += 1
+        weighted_score += SEVERITY_WEIGHTS[finding.severity] * finding.confidence
+        if finding.status == FindingStatus.CONFIRMED.value:
+            confirmed += 1
+    # A bounded score is easier to compare between reports of different sizes.
+    score = min(100.0, round(weighted_score * 10, 2))
+    rating = "critical" if score >= 75 else "high" if score >= 45 else "medium" if score >= 20 else "low" if score else "none"
+    return {"counts": counts, "total": len(normalized), "confirmed": confirmed, "score": score, "rating": rating}
+
+
 def deduplicate_findings(findings: Iterable[Any]) -> List[Dict[str, Any]]:
     """Dédupliquer sans perdre les outils indépendants qui corroborent."""
     grouped: Dict[str, Finding] = {}
@@ -159,6 +197,7 @@ def make_result(status: Status | str, *, findings=None, error=None, **data) -> D
     result = {"schema_version": "2.0", "status": value, **data}
     if findings is not None:
         result["findings"] = [x.to_dict() if isinstance(x, Finding) else x for x in findings]
+        result["finding_summary"] = summarize_findings(result["findings"])
     if error is not None:
         result["error"] = error
     return result
