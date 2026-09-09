@@ -96,6 +96,9 @@ from cli.groups.network import network
 from cli.groups.tools import tools
 from cli.groups.dynamic import dynamic_group
 from cli.groups.malware import malware
+from cli.groups.web import web
+from cli.groups.cloud import cloud, container
+from cli.groups.ai import ai
 from cli.groups.analyze import (
     analyze_command, analyze_pro_command,
     benchmark_command, correlate_command, diff_command
@@ -146,6 +149,10 @@ cli.add_command(firmware)
 cli.add_command(research)
 cli.add_command(network)
 cli.add_command(malware)
+cli.add_command(web)
+cli.add_command(cloud)
+cli.add_command(container)
+cli.add_command(ai)
 cli.add_command(tools)
 cli.add_command(dynamic_group)
 cli.add_command(config)
