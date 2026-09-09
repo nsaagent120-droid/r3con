@@ -6,7 +6,6 @@ from __future__ import annotations
 from typing import Dict, List, Any
 from pathlib import Path
 from datetime import datetime
-import json
 
 class PDFReporter:
     """PDF Reporter PRO - generates PDF via markdown + weasyprint or fallback."""
@@ -117,19 +116,6 @@ The target has been assessed as **{risk_level}** risk with a score of {risk_scor
 ### OWASP Top 10
 """
 
-        owasp_mapping = {
-            "A01": "Broken Access Control",
-            "A02": "Cryptographic Failures",
-            "A03": "Injection",
-            "A04": "Insecure Design",
-            "A05": "Security Misconfiguration",
-            "A06": "Vulnerable Components",
-            "A07": "Auth Failures",
-            "A08": "Software & Data Integrity Failures",
-            "A09": "Logging & Monitoring Failures",
-            "A10": "SSRF",
-        }
-
         for finding in findings[:20]:
             ftype = finding.get("type","").lower()
             if "injection" in ftype or "sqli" in ftype or "xss" in ftype:
@@ -139,7 +125,7 @@ The target has been assessed as **{risk_level}** risk with a score of {risk_scor
             elif "auth" in ftype or "password" in ftype:
                 md += f"- {finding.get('type','')} → **A07 Auth Failures**\n"
 
-        md += f"""
+        md += """
 
 ## MITRE ATT&CK Mapping
 
@@ -158,7 +144,7 @@ Techniques identified:
         for tech in sorted(list(techniques))[:20]:
             md += f"- {tech}\n"
 
-        md += f"""
+        md += """
 
 ---
 
