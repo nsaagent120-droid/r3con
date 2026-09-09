@@ -151,19 +151,50 @@ class DisasmEngine:
             return b"", 0
 
     def _load_all_sections(self) -> List[Tuple[str, bytes, int]]:
-        """Charger toutes les sections de code."""
+        """Charger toutes les sections de code - FIXED to include more executable sections."""
         sections = []
 
         if self._binary and LIEF_AVAILABLE:
             try:
                 for section in self._binary.sections:
                     name = section.name
-                    # Sections de code et de données intéressantes
-                    if any(x in name for x in ['.text', '.plt', '.init', '.fini',
-                                                'CODE', 'code', 'exec']):
+                    # Extended list: include all potentially executable sections
+                    # Also include sections that may contain shellcode or hidden code
+                    executable_names = [
+                        '.text', '.plt', '.init', '.fini', '.init_array', '.fini_array',
+                        '.plt.sec', '.got.plt', 'CODE', 'code', 'exec', '.code',
+                        '.shellcode', '.payload', '.hidden', '.up0', '.up1', '.upx',
+                        '.text.startup', '.text.exit', '.text.hot', '.text.unlikely'
+                    ]
+                    # Check if section is executable via characteristics
+                    is_executable = False
+                    try:
+                        # LIEF: check for executable flag
+                        if hasattr(section, 'has_characteristic'):
+                            # PE
+                            is_executable = True  # Simplified
+                        else:
+                            # ELF: check flags
+                            # SHF_EXECINSTR = 0x4
+                            if hasattr(section, 'flags'):
+                                is_executable = bool(section.flags & 0x4)
+                    except Exception:
+                        pass
+                    
+                    if any(x in name for x in executable_names) or is_executable or name.startswith('.text'):
                         content = bytes(section.content)
-                        if content:
-                            sections.append((name, content, section.virtual_address))
+                        if content and len(content) > 0:
+                            # Skip very small sections (<16 bytes)
+                            if len(content) >= 16:
+                                sections.append((name, content, section.virtual_address))
+                    
+                    # Also include .rodata if it contains executable patterns (shellcode detection)
+                    if name in ('.rodata', '.data', '.rdata') and len(bytes(section.content)) > 100:
+                        # Quick check for executable patterns
+                        content = bytes(section.content)
+                        if b'\x55\x48\x89\xe5' in content or b'\x90' * 10 in content:  # push rbp or NOP sled
+                            sections.append((name + " (suspicious)", content, section.virtual_address))
+
             except Exception:
                 pass
 
@@ -171,6 +202,18 @@ class DisasmEngine:
             data, addr = self._load_section(".text")
             if data:
                 sections.append((".text", data, addr))
+            else:
+                # Try all sections as fallback
+                if self._binary and LIEF_AVAILABLE:
+                    try:
+                        for section in self._binary.sections:
+                            content = bytes(section.content)
+                            if content and len(content) > 100:
+                                sections.append((section.name, content, section.virtual_address))
+                                if len(sections) >= 5:
+                                    break
+                    except Exception:
+                        pass
 
         return sections
 

@@ -87,30 +87,101 @@ class Orchestrator:
                            duration_ms=round((time.time() - self.started) * 1000))
 
     def _target_info(self) -> Dict[str, Any]:
+        """FIXED: Better file type detection with multiple heuristics."""
         h = hashlib.sha256()
         with self.path.open("rb") as fh:
             for chunk in iter(lambda: fh.read(1024 * 1024), b""):
                 h.update(chunk)
-        magic = self.path.read_bytes()[:8]
-        if magic.startswith(b"\x7fELF"):
-            # Un firmware peut contenir une signature ELF tronquée ou invalide.
-            # On ne classe en binaire que les classes/architectures ELF connues.
-            data = self.path.read_bytes()[:32]
+        
+        try:
+            file_data = self.path.read_bytes()
+            magic = file_data[:16]
+            file_size = len(file_data)
+        except Exception:
+            file_data = b""
+            magic = b""
+            file_size = 0
+
+        kind = "unknown"
+        confidence = 0.0
+        details = {}
+
+        # Check ELF at offset 0 AND at other offsets (firmware may contain ELF)
+        elf_at_0 = magic.startswith(b"\x7fELF")
+        elf_elsewhere = b"\x7fELF" in file_data[1:1024] if file_size > 1024 else False
+        
+        if elf_at_0:
+            data = file_data[:32]
             machine = int.from_bytes(data[18:20], "little") if len(data) >= 20 else 0
-            known_machines = {3, 8, 40, 62, 183, 243}
-            kind = "binary" if len(data) >= 20 and data[4] in (1, 2) and data[5] in (1, 2) and machine in known_machines else "firmware"
-        elif magic.startswith(b"PK\x03\x04"):
-            kind = "apk_or_zip"
-        elif magic.startswith((b"MZ", b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf")):
-            kind = "binary"
-        elif magic[:4] in (b"\xd4\xc3\xb2\xa1", b"\xa1\xb2\xc3\xd4", b"\x0a\x0d\x0d\x0a"):
-            kind = "network"
-        else:
-            source_suffixes = {".c", ".h", ".cc", ".cpp", ".py", ".go", ".rs", ".java", ".js", ".ts", ".php", ".rb"}
-            sample = self.path.read_bytes()[:8192]
-            printable_ratio = sum((b in (9, 10, 13) or 32 <= b < 127) for b in sample) / max(1, len(sample))
-            kind = "source" if self.path.suffix.lower() in source_suffixes or printable_ratio > 0.92 else "firmware"
-        return {"path": str(self.path), "sha256": h.hexdigest(), "size": self.path.stat().st_size, "kind": kind}
+            known_machines = {3, 8, 20, 21, 40, 62, 183, 243}
+            if len(data) >= 20 and data[4] in (1, 2) and data[5] in (1, 2) and machine in known_machines:
+                kind = "binary"
+                confidence = 0.95
+                details["elf_at_0"] = True
+                details["machine"] = machine
+            else:
+                kind = "firmware"
+                confidence = 0.6
+                details["elf_invalid"] = True
+        elif elf_elsewhere and file_size > 1024:
+            # ELF inside firmware - likely firmware
+            kind = "firmware"
+            confidence = 0.8
+            details["elf_embedded"] = True
+
+        # ZIP/APK - check for APK specific
+        if kind == "unknown" or confidence < 0.8:
+            if magic.startswith(b"PK\x03\x04"):
+                # Check if it's APK (contains AndroidManifest.xml or classes.dex)
+                if b"AndroidManifest.xml" in file_data[:8192] or b"classes.dex" in file_data[:8192]:
+                    kind = "apk_or_zip"
+                    confidence = 0.9
+                    details["apk_signature"] = True
+                elif file_data[:2] == b"PK":
+                    kind = "apk_or_zip"
+                    confidence = 0.7
+
+        # PE / MachO
+        if kind == "unknown":
+            if magic.startswith(b"MZ"):
+                kind = "binary"
+                confidence = 0.85
+            elif magic.startswith((b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe")):
+                kind = "binary"
+                confidence = 0.85
+
+        # PCAP - check magic
+        if kind == "unknown":
+            if magic[:4] in (b"\xd4\xc3\xb2\xa1", b"\xa1\xb2\xc3\xd4", b"\x4d\x3c\xb2\xa1", b"\xa1\xb2\x3c\x4d") or magic[:4] == b"\x0a\x0d\x0d\x0a":
+                kind = "network"
+                confidence = 0.9
+
+        # Source code vs firmware
+        if kind == "unknown":
+            source_suffixes = {".c", ".h", ".cc", ".cpp", ".py", ".go", ".rs", ".java", ".js", ".ts", ".php", ".rb", ".sh", ".pl"}
+            sample = file_data[:8192]
+            if sample:
+                printable_ratio = sum((b in (9, 10, 13) or 32 <= b < 127) for b in sample) / max(1, len(sample))
+                details["printable_ratio"] = printable_ratio
+                if self.path.suffix.lower() in source_suffixes:
+                    kind = "source"
+                    confidence = 0.85
+                elif printable_ratio > 0.92 and file_size < 5*1024*1024:
+                    kind = "source"
+                    confidence = 0.7
+                else:
+                    # Check firmware indicators
+                    firmware_indicators = [b"squashfs", b"uboot", b"u-boot", b"Linux", b"busybox", b"JFFS2", b"CRAMFS"]
+                    found_indicators = [ind for ind in firmware_indicators if ind.lower() in sample.lower()]
+                    if found_indicators:
+                        kind = "firmware"
+                        confidence = 0.75
+                        details["firmware_indicators"] = [i.decode() for i in found_indicators]
+                    else:
+                        kind = "firmware" if file_size > 1024*1024 else "binary"
+                        confidence = 0.5
+
+        return {"path": str(self.path), "sha256": h.hexdigest(), "size": self.path.stat().st_size, "kind": kind, "confidence": confidence, "details": details}
 
     def _select_profile(self) -> str:
         if self.profile != "auto":
@@ -177,17 +248,33 @@ class Orchestrator:
         return {key: results[key] for key in plan if key in results}
 
     def _cached_task(self, task: str) -> Dict[str, Any]:
+        """FIXED: Cache invalidation includes tool versions and r3con version."""
         cacheable = self.cache_enabled and task not in {"gdb_status", "gdb_info", "gdb_crash", "network_external"}
         cache_file = None
         if cacheable and self.target_hash:
-            key = hashlib.sha256(json.dumps({"sha256": self.target_hash, "profile": self.profile, "task": task, "engine": self.reverse_engine, "ghidra": self.with_ghidra}, sort_keys=True).encode()).hexdigest()
+            # Include tool versions in cache key for proper invalidation
+            version_info = self._get_version_info()
+            key_data = {
+                "sha256": self.target_hash, 
+                "profile": self.profile, 
+                "task": task, 
+                "engine": self.reverse_engine, 
+                "ghidra": self.with_ghidra,
+                "versions": version_info,
+            }
+            key = hashlib.sha256(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
             cache_file = self.cache_dir / key[:2] / (key + ".json")
             try:
                 if cache_file.is_file():
                     cached = json.loads(cache_file.read_text(encoding="utf-8"))
-                    cached["cache"] = "hit"
-                    cached["task"] = task
-                    return cached
+                    # Check if cache is too old (7 days)
+                    cache_age = time.time() - cache_file.stat().st_mtime
+                    if cache_age > 7*24*3600:
+                        cache_file.unlink(missing_ok=True)
+                    else:
+                        cached["cache"] = "hit"
+                        cached["task"] = task
+                        return cached
             except (OSError, ValueError, TypeError):
                 pass
         started = time.time()
@@ -203,6 +290,62 @@ class Orchestrator:
             except OSError:
                 pass
         return result
+
+    def _get_version_info(self) -> Dict[str, str]:
+        """Get versions of tools for cache invalidation."""
+        versions = {}
+        try:
+            # r3con version
+            versions["r3con"] = "5.0.2-fixed"
+            # Get hashes of critical modules
+            import pathlib
+            critical_files = [
+                "modules/audit/static_analyzer.py",
+                "modules/disasm/binary_parser.py",
+                "modules/firmware/firmware_analyzer.py",
+                "modules/apk/apk_analyzer.py",
+            ]
+            for cf in critical_files:
+                try:
+                    p = Path(__file__).parent.parent.parent / cf
+                    if p.is_file():
+                        h = hashlib.sha256(p.read_bytes()[:8192]).hexdigest()[:12]
+                        versions[cf] = h
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return versions
+
+    def cleanup_old_artifacts(self, days: int = 7) -> int:
+        """Clean up old artifacts and cache."""
+        cleaned = 0
+        try:
+            # Clean cache
+            if self.cache_dir.is_dir():
+                cutoff = time.time() - days*24*3600
+                for f in self.cache_dir.rglob("*.json"):
+                    try:
+                        if f.stat().st_mtime < cutoff:
+                            f.unlink()
+                            cleaned += 1
+                    except Exception:
+                        continue
+            # Clean runs
+            runs_dir = self.cache_dir / "runs"
+            if runs_dir.is_dir():
+                cutoff = time.time() - days*24*3600
+                for d in runs_dir.iterdir():
+                    try:
+                        if d.is_dir() and d.stat().st_mtime < cutoff:
+                            import shutil
+                            shutil.rmtree(d)
+                            cleaned += 1
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return cleaned
 
     def _task(self, task: str) -> Dict[str, Any]:
         if task == "strings":

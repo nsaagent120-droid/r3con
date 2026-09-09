@@ -483,47 +483,103 @@ class BinaryParser:
         return suspicious
 
     def get_security_score(self) -> Dict:
-        """Score de sécurité global du binaire."""
-        checksec   = self._checksec()
-        score      = 100
-        penalties  = []
+        """Score de sécurité global du binaire - FIXED tri-state handling."""
+        checksec = self._checksec()
+        score = 100
+        penalties = []
+        unknowns = []
 
-        if not checksec.get("pie"):
+        # FIX: Proper tri-state handling - None means unknown, not absent
+        # Only penalize when explicitly False or "none", not when None
+        if checksec.get("pie") is False:
             score -= 20
             penalties.append("No PIE (-20)")
-        if not checksec.get("nx"):
+        elif checksec.get("pie") is None:
+            unknowns.append("PIE unknown")
+
+        if checksec.get("nx") is False:
             score -= 25
             penalties.append("No NX/DEP (-25)")
-        if not checksec.get("canary"):
+        elif checksec.get("nx") is None:
+            unknowns.append("NX unknown")
+
+        if checksec.get("canary") is False:
             score -= 15
             penalties.append("No stack canary (-15)")
+        elif checksec.get("canary") is None:
+            unknowns.append("Canary unknown")
+
         if checksec.get("relro") == "none":
             score -= 10
             penalties.append("No RELRO (-10)")
-        if checksec.get("stripped"):
+        elif checksec.get("relro") is None:
+            unknowns.append("RELRO unknown")
+
+        if checksec.get("stripped") is True:
             score -= 5
             penalties.append("Stripped binary (-5)")
 
+        # Check for packer
+        packer = self._detect_packer()
+        if packer:
+            score -= 15
+            penalties.append(f"Packed with {packer} (-15) - unpack first")
+
         # Vérifier imports dangereux
-        imports  = self.get_imports()
+        imports = self.get_imports()
         crit_imp = [i for i in imports if i.get("danger_level") == "CRITICAL"]
+        high_imp = [i for i in imports if i.get("danger_level") == "HIGH"]
         if crit_imp:
             penalty = min(len(crit_imp) * 5, 25)
-            score  -= penalty
+            score -= penalty
             penalties.append(f"{len(crit_imp)} dangerous imports (-{penalty})")
+        if high_imp and len(high_imp) >= 3:
+            score -= 10
+            penalties.append(f"{len(high_imp)} HIGH-risk imports (-10)")
 
         score = max(score, 0)
-        if score >= 80:  rating = "GOOD"
-        elif score >= 60: rating = "FAIR"
-        elif score >= 40: rating = "POOR"
-        else:             rating = "CRITICAL"
+        if score >= 80:
+            rating = "GOOD"
+        elif score >= 60:
+            rating = "FAIR"
+        elif score >= 40:
+            rating = "POOR"
+        else:
+            rating = "CRITICAL"
 
         return {
-            "score":    score,
-            "rating":   rating,
+            "score": score,
+            "rating": rating,
             "checksec": checksec,
             "penalties": penalties,
+            "unknowns": unknowns,
+            "packer": packer,
+            "total_imports": len(imports),
+            "critical_imports": len(crit_imp),
         }
+
+    def _detect_packer(self) -> Optional[str]:
+        """Detect common packers."""
+        try:
+            with open(self.path, "rb") as f:
+                data = f.read(8192)
+            # UPX
+            if b"UPX!" in data or b"UPX0" in data or b"UPX1" in data:
+                return "UPX"
+            # MPRESS, ASPack, etc via section names
+            if self._binary and LIEF_AVAILABLE:
+                try:
+                    for s in self._binary.sections:
+                        if s.name in (".upx", "UPX0", "UPX1", ".aspack", ".mpress", ".petite"):
+                            return s.name.strip(".")
+                except Exception:
+                    pass
+            out = self._run_tool(["strings", self.path]) or ""
+            if "UPX" in out:
+                return "UPX (via strings)"
+        except Exception:
+            pass
+        return None
 
     # ── Utils ─────────────────────────────────────────────────
 
