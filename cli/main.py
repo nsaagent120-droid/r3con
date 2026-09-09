@@ -101,6 +101,7 @@ from cli.groups.cloud import cloud, container
 from cli.groups.ai import ai
 from cli.groups.decompile import decompile, secrets
 from cli.groups.report import report
+from cli.groups.dashboard import dashboard, ml
 from cli.groups.analyze import (
     analyze_command, analyze_pro_command,
     benchmark_command, correlate_command, diff_command
@@ -158,6 +159,8 @@ cli.add_command(ai)
 cli.add_command(decompile)
 cli.add_command(secrets)
 cli.add_command(report)
+cli.add_command(dashboard)
+cli.add_command(ml)
 cli.add_command(tools)
 cli.add_command(dynamic_group)
 cli.add_command(config)
