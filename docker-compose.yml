@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  r3con:
+    build: .
+    image: r3con:7.1.0
+    container_name: r3con
+    volumes:
+      - ./samples:/home/r3con/samples:ro
+      - r3con-cache:/home/r3con/.r3con
+      - ./reports:/home/r3con/reports
+    environment:
+      - VT_API_KEY=${VT_API_KEY:-}
+      - GHIDRA_HOME=/opt/ghidra
+    networks:
+      - r3con-net
+    command: --help
+
+  r3con-dashboard:
+    build: .
+    image: r3con:7.1.0
+    container_name: r3con-dashboard
+    ports:
+      - "5000:5000"
+    volumes:
+      - r3con-cache:/home/r3con/.r3con
+      - ./reports:/home/r3con/reports
+    environment:
+      - FLASK_APP=modules.web.dashboard
+    entrypoint: ["python", "-m", "modules.web.dashboard"]
+    networks:
+      - r3con-net
+    depends_on:
+      - elasticsearch
+      - postgres
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: r3con-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    networks:
+      - r3con-net
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: r3con-postgres
+    environment:
+      - POSTGRES_USER=r3con
+      - POSTGRES_PASSWORD=r3con
+      - POSTGRES_DB=r3con
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - r3con-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: r3con-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - r3con-net
+
+volumes:
+  r3con-cache:
+  es-data:
+  pg-data:
+  redis-data:
+
+networks:
+  r3con-net:
+    driver: bridge

@@ -1,78 +1,80 @@
-# r3con v5.0.3 - Professional Docker image
-# Multi-stage build for minimal production image
+FROM python:3.11-slim
 
-FROM python:3.11-slim-bookworm AS builder
+LABEL name="r3con" version="7.1.0" description="r3con v7.1 Titan-Omega-Full-Rival - Unified offline-first security research toolkit"
 
-# Security: non-root, minimal deps
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
-
-WORKDIR /build
-
-# Install build deps
+# Install system dependencies for all domains
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
     binutils \
     file \
+    strings \
+    objdump \
+    readelf \
+    nm \
+    hexdump \
+    upx-ucl \
+    binwalk \
+    exiftool \
+    tshark \
+    tcpdump \
+    nmap \
+    git \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files first for caching
-COPY pyproject.toml setup.py README.md LICENSE MANIFEST.in ./
-COPY core/__version__.py core/__version__.py
-COPY cli/ cli/
-COPY core/ core/
-COPY layers/ layers/
-COPY modules/ modules/
-COPY plugins/ plugins/
-COPY config.yaml ./
+# Optional tools (may not be available in slim, try)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    radare2 \
+    gdb \
+    strace \
+    ltrace \
+    || echo "Some optional tools not available"
 
-# Build wheel
-RUN pip install --upgrade pip build && \
-    python -m build --wheel
-
-FROM python:3.11-slim-bookworm AS runtime
-
-LABEL org.opencontainers.image.title="r3con" \
-      org.opencontainers.image.description="Offline-first binary, APK, firmware and source security research toolkit" \
-      org.opencontainers.image.version="5.0.3" \
-      org.opencontainers.image.authors="r3con contributors" \
-      org.opencontainers.image.source="https://github.com/nsaagent120-droid/r3con" \
-      org.opencontainers.image.licenses="MIT"
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    R3CON_NO_COLOR=0 \
-    R3CON_NO_ANIMATION=0
-
+# Create app directory
 WORKDIR /app
 
-# Runtime deps: binutils for fallback disasm, file for magic
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    binutils \
-    file \
-    binwalk \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd -m -u 1000 -s /bin/bash r3con
+# Copy requirements
+COPY requirements.txt pyproject.toml setup.py README.md ./
+COPY cli/ ./cli/
+COPY core/ ./core/
+COPY modules/ ./modules/
+COPY config.yaml config.pro.yaml ./
 
-# Copy wheel from builder and install
-COPY --from=builder /build/dist/*.whl /tmp/
-RUN pip install --upgrade pip && \
-    pip install /tmp/*.whl && \
-    pip install "capstone>=5.0.0" "lief>=0.13.0" "pyyaml>=6.0" "jinja2>=3.1.0" || true && \
-    rm -rf /tmp/*.whl && \
-    rm -rf /root/.cache
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -e . && \
+    pip install --no-cache-dir \
+        capstone \
+        pefile \
+        yara-python \
+        requests \
+        markdown \
+        lief \
+        rich \
+        click
 
-# Switch to non-root user
+# Optional: angr, z3 (heavy)
+RUN pip install --no-cache-dir angr z3-solver || echo "angr/z3 optional, skipping"
+
+# Create r3con user
+RUN useradd -m -s /bin/bash r3con && \
+    mkdir -p /home/r3con/.r3con/cache /home/r3con/.r3con/yara /home/r3con/.r3con/reports && \
+    chown -R r3con:r3con /home/r3con /app
+
 USER r3con
-WORKDIR /home/r3con/work
+WORKDIR /home/r3con
 
-# Default command
-ENTRYPOINT ["r3con"]
+# Environment
+ENV PYTHONPATH=/app
+ENV GHIDRA_HOME=/opt/ghidra
+ENV R3CON_NO_COLOR=0
+
+# Entry point
+ENTRYPOINT ["python", "-m", "cli.main"]
 CMD ["--help"]
 
-# Health check: verify CLI works
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD r3con --help > /dev/null || exit 1
+# Labels for metadata
+LABEL org.opencontainers.image.title="r3con" \
+      org.opencontainers.image.description="Unified offline-first security toolkit - Binary, Malware, Network, Web, Cloud, Container" \
+      org.opencontainers.image.version="7.1.0" \
+      org.opencontainers.image.authors="r3con contributors" \
+      org.opencontainers.image.source="https://github.com/nsaagent120-droid/r3con"
