@@ -79,6 +79,9 @@ from cli.groups.analyze import (
 )
 from cli.groups.config import config
 from cli.groups.workspace import workspace as workspace_group
+from cli.groups.fuzzing import fuzzing as fuzzing_group
+from cli.groups.agent import agent as agent_group
+from cli.groups.exploit import exploit as exploit_group
 from cli.groups.interactive import (
     r2_command, gdb_command,
     session_cmd, plugins_group, interactive_mode
@@ -124,6 +127,11 @@ cli.add_command(dynamic_group)
 cli.add_command(config)
 cli.add_command(plugins_group)
 cli.add_command(workspace_group)
+
+# v6.0 Titan-Omega new groups
+cli.add_command(fuzzing_group)
+cli.add_command(agent_group)
+cli.add_command(exploit_group)
 
 # Direct commands
 cli.add_command(analyze_command)
