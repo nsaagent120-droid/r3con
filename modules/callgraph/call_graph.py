@@ -1,156 +1,204 @@
-"""Compatibility facade for the canonical AST-first call graph - FIXED P3
-Fixes: DOT escaping, BFS depth limit, size limits
 """
-from collections import deque
+r3con v6.1 - Call Graph PRO renforcé
+Graphe d'appels + intégration pipeline + visualisation
+"""
+from __future__ import annotations
 import re
-from typing import Optional
-from modules.analysis.interprocedural import InterproceduralAnalyzer
+from pathlib import Path
+from typing import List, Dict, Any, Set
+from collections import defaultdict
+import json
 
-MAX_FUNCTIONS_DOT = 200
-MAX_EDGES_DOT = 500
-MAX_BFS_DEPTH = 20
-MAX_CHAIN_LEN = 50
+class CallGraph:
+    """Call Graph PRO."""
+
+    def __init__(self):
+        self.functions: Dict[str, Dict] = {}
+        self.calls: List[Dict] = []
+        self.graph: Dict[str, Set[str]] = defaultdict(set)
+
+    def analyze_file(self, file_path: str) -> Dict[str, Any]:
+        """Analyse fichier source et construit call graph."""
+        path = Path(file_path)
+        if not path.is_file():
+            return {"status": "error", "error": "file_not_found"}
+
+        try:
+            code = path.read_text(encoding="utf-8", errors="ignore")[:500000]
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+        # Extract functions
+        func_pattern = re.compile(r'(?:[a-zA-Z_][\w\*\s]*?)\s+([a-zA-Z_]\w*)\s*\([^)]{0,500}\)\s*\{', re.MULTILINE)
+        functions = {}
+        for match in func_pattern.finditer(code):
+            name = match.group(1)
+            if name in ('if', 'while', 'for', 'switch', 'return', 'sizeof'):
+                continue
+            start = match.end()
+            # Find body
+            depth = 1
+            pos = start
+            max_search = min(len(code), start + 20000)
+            while pos < max_search and depth > 0:
+                if code[pos] == '{':
+                    depth += 1
+                elif code[pos] == '}':
+                    depth -= 1
+                pos += 1
+            body = code[start:pos-1] if depth == 0 else code[start:max_search]
+            functions[name] = {
+                "name": name,
+                "body": body[:5000],
+                "calls": [],
+                "line": code[:match.start()].count('\n') + 1,
+            }
+
+        # Extract calls per function
+        for func_name, func_info in functions.items():
+            body = func_info["body"]
+            # Find function calls in body
+            call_pattern = re.compile(r'\b([a-zA-Z_]\w*)\s*\(')
+            called = set()
+            for call_match in call_pattern.finditer(body):
+                called_name = call_match.group(1)
+                if called_name != func_name and called_name in functions:
+                    called.add(called_name)
+                    self.graph[func_name].add(called_name)
+                    self.calls.append({
+                        "caller": func_name,
+                        "callee": called_name,
+                        "file": str(path),
+                    })
+            func_info["calls"] = list(called)
+
+        self.functions = functions
+
+        # Find entry points and dangerous sinks
+        entry_points = [name for name in functions if name in ('main', 'start', 'init', 'handle', 'process')]
+        dangerous_sinks = []
+        dangerous_funcs = {'gets', 'strcpy', 'strcat', 'sprintf', 'system', 'exec', 'printf'}
+
+        for func_name, func_info in functions.items():
+            for sink in dangerous_funcs:
+                if sink in func_info["body"]:
+                    dangerous_sinks.append({
+                        "function": func_name,
+                        "sink": sink,
+                        "line": func_info["line"],
+                    })
+
+        # Find paths from entry to dangerous
+        paths = self._find_paths_to_sinks(entry_points, dangerous_sinks)
+
+        return {
+            "status": "ok",
+            "engine": "call_graph",
+            "file": str(path),
+            "functions": len(functions),
+            "calls": len(self.calls),
+            "entry_points": entry_points,
+            "dangerous_sinks": dangerous_sinks,
+            "paths_to_sinks": paths,
+            "graph": {k: list(v) for k, v in self.graph.items()},
+            "findings": self._graph_to_findings(paths, str(path)),
+        }
+
+    def _find_paths_to_sinks(self, entry_points: List[str], sinks: List[Dict]) -> List[Dict[str, Any]]:
+        """Trouve chemins depuis entry points vers sinks dangereux."""
+        paths = []
+
+        for entry in entry_points:
+            for sink_info in sinks:
+                sink_func = sink_info["function"]
+                # BFS from entry to sink_func
+                visited = set()
+                queue = [(entry, [entry])]
+
+                while queue:
+                    current, path = queue.pop(0)
+                    if current in visited:
+                        continue
+                    visited.add(current)
+
+                    if current == sink_func:
+                        paths.append({
+                            "entry": entry,
+                            "sink": sink_info["sink"],
+                            "sink_function": sink_func,
+                            "path": path,
+                            "length": len(path),
+                            "severity": "CRITICAL" if sink_info["sink"] in ('gets', 'system') else "HIGH",
+                        })
+                        break
+
+                    for callee in self.graph.get(current, []):
+                        if callee not in visited and len(path) < 10:
+                            queue.append((callee, path + [callee]))
+
+        return paths[:20]
+
+    def _graph_to_findings(self, paths: List[Dict], file: str) -> List[Dict[str, Any]]:
+        """Convertit chemins en findings."""
+        findings = []
+        for path in paths:
+            findings.append({
+                "type": f"CallGraph: {path['entry']} -> {path['sink']}()",
+                "severity": path["severity"],
+                "file": file,
+                "description": f"Chemin d'appel: {' -> '.join(path['path'])} atteint sink dangereux {path['sink']}() dans {path['sink_function']}()",
+                "path": path["path"],
+                "sink": path["sink"],
+                "recommendation": f"Vérifier validation avant {path['sink']}() dans chemin depuis {path['entry']}",
+            })
+        return findings
+
+    def export_dot(self) -> str:
+        """Export Graphviz DOT."""
+        dot = "digraph CallGraph {\n"
+        dot += "  rankdir=LR;\n"
+        for caller, callees in self.graph.items():
+            for callee in callees:
+                dot += f'  "{caller}" -> "{callee}";\n'
+        dot += "}\n"
+        return dot
+
+    def export_json(self) -> Dict[str, Any]:
+        """Export JSON."""
+        return {
+            "functions": list(self.functions.keys()),
+            "calls": self.calls,
+            "graph": {k: list(v) for k, v in self.graph.items()},
+        }
 
 
-def _escape_dot_label(name: str) -> str:
-    """Escape DOT label to prevent injection."""
-    if not name or not isinstance(name, str):
-        return "unknown"
-    # Limit length
-    if len(name) > 100:
-        name = name[:100]
-    # Escape quotes and special chars
-    # DOT labels in quotes: escape " and \ and newlines
-    name = name.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "")
-    # Remove control chars
-    name = "".join(c for c in name if c.isprintable() or c in " _-")
-    return name
+# Backward compatibility alias for tests
+class CallGraphAnalyzer:
+    """Compat wrapper - delegates to CallGraph + simple analysis."""
 
-
-def _validate_func_name(name: str) -> bool:
-    """Validate function name."""
-    if not name or not isinstance(name, str):
-        return False
-    if len(name) > 200 or "\x00" in name:
-        return False
-    # Allow alphanumeric, _, :, etc but not shell metachars
-    if any(c in name for c in ";|&`$()><\n\r"):
-        return False
-    return True
-
-
-class CallGraphAnalyzer(InterproceduralAnalyzer):
-    """Single call-graph implementation with a backwards-compatible API - FIXED P3."""
-
-    def analyze(self, code: str, filename: str = "unknown"):
-        if not code or len(code) > 2 * 1024 * 1024:
-            return {"functions": [], "call_graph": {}, "findings": [], "taint_summary": {},
-                    "stats": {"functions_analyzed": 0, "cross_function_vulns": 0, "taint_propagated": 0},
-                    "function_count": 0, "dangerous_paths": [], "error": "invalid_code"}
-
-        result = super().analyze(code, filename)
-        result["function_count"] = len(result.get("functions", []))
-        result["dangerous_paths"] = []
-
-        # Limit findings
-        findings = result.get("findings", [])[:100]
-
-        for finding in findings:
+    def analyze(self, code: str, file_name: str = "test.c") -> Dict[str, Any]:
+        import tempfile, os
+        # Write code to temp file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.c', delete=False) as tf:
+            tf.write(code)
+            tf_path = tf.name
+        try:
+            cg = CallGraph()
+            result = cg.analyze_file(tf_path)
+            # Build call_graph dict format expected by old test
+            call_graph = result.get("graph", {})
+            return {
+                "call_graph": call_graph,
+                "dangerous_paths": result.get("paths_to_sinks", []),
+                "functions": result.get("functions", 0),
+                "findings": result.get("findings", []),
+            }
+        finally:
             try:
-                chain = finding.get("call_chain", "").split(" → ")
-                # Validate chain
-                if len(chain) > MAX_CHAIN_LEN:
-                    chain = chain[:MAX_CHAIN_LEN]
-                # Validate each func in chain
-                chain = [c[:100] for c in chain if _validate_func_name(c) or c == "unknown"]
-
-                result["dangerous_paths"].append({
-                    "source": chain[0] if chain else "unknown",
-                    "sink": finding.get("type", "").split("→")[-1].rstrip("()")[:100],
-                    "path": chain[:20],
-                    "depth": len(chain),
-                    "severity": finding.get("severity", "INFO"),
-                    "interprocedural": len(chain) > 2,
-                })
-                if len(result["dangerous_paths"]) >= 50:
-                    break
+                os.unlink(tf_path)
             except Exception:
-                continue
+                pass
 
-        result["stats"].update({
-            "total_functions": len(result["functions"]),
-            "dangerous_paths": len(result["dangerous_paths"])
-        })
-        return result
-
-    def visualize_dot(self) -> str:
-        """Generate DOT - FIXED escaping, limits."""
-        lines = ["digraph CallGraph {", "  rankdir=LR;", "  node [shape=box];"]
-
-        # Limit functions
-        funcs = list(self.functions.keys())[:MAX_FUNCTIONS_DOT]
-
-        for function in funcs:
-            if not _validate_func_name(function):
-                continue
-            summary = self.taint_summary.get(function, {})
-            color = "red" if summary.get("has_sink") else "yellow" if summary.get("has_source") else "lightblue"
-            escaped = _escape_dot_label(function)
-            lines.append(f'  "{escaped}" [fillcolor={color}, style=filled];')
-
-        edge_count = 0
-        for caller, callees in self.call_graph.items():
-            if edge_count >= MAX_EDGES_DOT:
-                break
-            if not _validate_func_name(caller) or caller not in funcs:
-                continue
-            caller_esc = _escape_dot_label(caller)
-            for callee in list(callees)[:20]:  # Limit per caller
-                if edge_count >= MAX_EDGES_DOT:
-                    break
-                if not _validate_func_name(callee):
-                    continue
-                callee_esc = _escape_dot_label(callee)
-                lines.append(f'  "{caller_esc}" -> "{callee_esc}";')
-                edge_count += 1
-
-        lines.append("}")
-        return "\n".join(lines)
-
-    def get_call_chain(self, func_a: str, func_b: str) -> Optional[list]:
-        """Get call chain with depth limit - FIXED."""
-        if not _validate_func_name(func_a) or not _validate_func_name(func_b):
-            return None
-
-        if func_a == func_b:
-            return [func_a]
-
-        # BFS with depth limit
-        queue, visited = deque([(func_a, [func_a])]), {func_a}
-
-        while queue:
-            node, path = queue.popleft()
-
-            # Depth limit
-            if len(path) >= MAX_BFS_DEPTH:
-                continue
-
-            # Limit total visited to prevent explosion
-            if len(visited) > 10000:
-                break
-
-            for neighbor in self.call_graph.get(node, set()):
-                if not _validate_func_name(neighbor):
-                    continue
-                if neighbor == func_b:
-                    result = path + [func_b]
-                    if len(result) > MAX_CHAIN_LEN:
-                        return result[:MAX_CHAIN_LEN]
-                    return result
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    # Limit path length
-                    if len(path) < MAX_CHAIN_LEN:
-                        queue.append((neighbor, path + [neighbor]))
-
-        return None
+    def analyze_file(self, file_path: str) -> Dict[str, Any]:
+        cg = CallGraph()
+        return cg.analyze_file(file_path)

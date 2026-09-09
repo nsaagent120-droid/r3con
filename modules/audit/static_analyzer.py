@@ -516,3 +516,95 @@ class StaticAnalyzer:
                 if re.search(pat, line, re.I):
                     findings.append({"severity": sev, "type": vtype, "line": i, "description": desc, "recommendation": "Validate and sanitize"})
         return findings
+
+    def analyze_with_knowledge(self, code: str, file_path: str = None, use_cve_db: bool = True, use_yara: bool = True) -> Dict:
+        """Analyse PRO avec CVE DB + YARA + base patterns."""
+        import tempfile, os
+
+        base_findings = self.analyze(code)
+
+        extra_findings = []
+        knowledge_stats = {}
+
+        # CVE DB scan
+        if use_cve_db:
+            try:
+                from modules.knowledge.cve_db import CVEDatabase
+                db = CVEDatabase()
+                if file_path and os.path.isfile(file_path):
+                    cve_findings = db.search(file_path, min_confidence=0.3)
+                else:
+                    # Temp file
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.c', delete=False) as tf:
+                        tf.write(code[:500000])
+                        tf_path = tf.name
+                    try:
+                        cve_findings = db.search(tf_path, min_confidence=0.3)
+                    finally:
+                        try:
+                            os.unlink(tf_path)
+                        except Exception:
+                            pass
+                extra_findings.extend(cve_findings)
+                knowledge_stats["cve_db"] = {"patterns": len(db.get_stats()), "hits": len(cve_findings)}
+            except Exception as e:
+                knowledge_stats["cve_db_error"] = str(e)[:200]
+
+        # YARA scan
+        if use_yara and file_path:
+            try:
+                from modules.knowledge.yara_manager import YaraManager
+                ym = YaraManager()
+                if os.path.isfile(file_path):
+                    yara_result = ym.scan_file(file_path)
+                    for match in yara_result.get("matches", []):
+                        extra_findings.append({
+                            "severity": match.get("severity", "MEDIUM"),
+                            "type": f"YARA: {match.get('rule','unknown')}",
+                            "line": 1,
+                            "description": match.get("description", ""),
+                            "file": file_path,
+                            "engine": "yara",
+                        })
+                    knowledge_stats["yara"] = yara_result.get("stats", {})
+            except Exception as e:
+                knowledge_stats["yara_error"] = str(e)[:200]
+
+        # IoC extraction
+        try:
+            from modules.knowledge.ioc_correlator import IoCCorrelator
+            corr = IoCCorrelator()
+            iocs = corr.extract_iocs(code[:100000])
+            total_iocs = sum(len(v) for v in iocs.values())
+            knowledge_stats["iocs"] = {"total": total_iocs, "breakdown": {k: len(v) for k, v in iocs.items()}}
+            # High-value IoCs as findings
+            for ip in iocs.get("ips", [])[:5]:
+                if ip not in ("127.0.0.1", "0.0.0.0"):
+                    extra_findings.append({
+                        "severity": "MED", "type": "IoC: Hardcoded IP",
+                        "line": 1, "description": f"Hardcoded IP {ip} - possible C2",
+                        "ioc": ip,
+                    })
+        except Exception as e:
+            knowledge_stats["ioc_error"] = str(e)[:200]
+
+        all_findings = base_findings + extra_findings
+
+        # Enrich
+        enriched = self._enrich_findings(all_findings, code.splitlines())
+
+        return {
+            "status": "ok",
+            "engine": "static_analyzer_pro",
+            "findings": enriched,
+            "total": len(enriched),
+            "base_count": len(base_findings),
+            "knowledge_count": len(extra_findings),
+            "knowledge_stats": knowledge_stats,
+            "severity_breakdown": {
+                "CRITICAL": len([f for f in enriched if f.get("severity") == "CRITICAL"]),
+                "HIGH": len([f for f in enriched if f.get("severity") == "HIGH"]),
+                "MEDIUM": len([f for f in enriched if f.get("severity") in ("MEDIUM", "MED")]),
+                "LOW": len([f for f in enriched if f.get("severity") == "LOW"]),
+            }
+        }

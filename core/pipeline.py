@@ -343,15 +343,193 @@ def create_firmware_pipeline(config: ConfigManager, target_path: str) -> Pipelin
     return pipeline
 
 
+def create_binary_pipeline_pro(config: ConfigManager, target_path: str) -> Pipeline:
+    """Pipeline PRO v6.1 avec knowledge + YARA + deps + callgraph + reporting."""
+    pipeline = create_binary_pipeline(config, target_path)
+
+    def task_cve_scan(ctx, prev):
+        try:
+            from modules.knowledge.cve_db import CVEDatabase
+            db = CVEDatabase()
+            strings_res = prev.get("strings")
+            disasm_res = prev.get("disasm")
+            combined = ""
+            if strings_res and strings_res.get("observations"):
+                obs = strings_res["observations"]
+                if isinstance(obs, list):
+                    combined += "\n".join(str(x) for x in obs[:5000])
+                else:
+                    combined += str(obs)[:100000]
+            if disasm_res and disasm_res.get("observations"):
+                asm = disasm_res["observations"].get("asm", "")
+                combined += "\n" + asm[:100000]
+
+            # Create temp file for scanning
+            import tempfile, os
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.c', delete=False) as tf:
+                tf.write(combined[:200000])
+                tf_path = tf.name
+            try:
+                findings = db.search(tf_path, min_confidence=0.3)
+                return make_result(Status.OK, engine="cve_db", observations=findings, count=len(findings))
+            finally:
+                try:
+                    os.unlink(tf_path)
+                except Exception:
+                    pass
+        except Exception as e:
+            return make_result(Status.ERROR, engine="cve_db", error=str(e)[:500])
+
+    def task_yara_scan(ctx, prev):
+        try:
+            from modules.knowledge.yara_manager import YaraManager
+            ym = YaraManager()
+            result = ym.scan_file(ctx["target_path"])
+            return make_result(Status.OK, engine="yara", observations=result, count=len(result.get("matches", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="yara", error=str(e)[:500])
+
+    def task_deps_scan(ctx, prev):
+        try:
+            from pathlib import Path
+            from modules.deps.dependency_scanner import DependencyScanner
+            ds = DependencyScanner()
+            target = Path(ctx["target_path"])
+            # If target is a directory, scan it; else scan parent dir for dep files
+            scan_dir = str(target if target.is_dir() else target.parent)
+            result = ds.scan_directory(scan_dir)
+            return make_result(Status.OK, engine="dependency_scanner", observations=result, count=result.get("vulnerable", 0))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="dependency_scanner", error=str(e)[:500])
+
+    def task_callgraph(ctx, prev):
+        try:
+            from modules.callgraph.call_graph import CallGraph
+            disasm_res = prev.get("disasm")
+            if not disasm_res or disasm_res.get("status") != Status.OK.value:
+                return make_result(Status.UNSUPPORTED, engine="call_graph", error="no_disasm")
+            # Re-use disasm or scan original if source
+            cg = CallGraph()
+            # Try to get source from context if it's a source file
+            target = ctx["target_path"]
+            if target.endswith(('.c', '.cpp', '.h')):
+                result = cg.analyze_file(target)
+            else:
+                # No source, return empty but ok
+                return make_result(Status.OK, engine="call_graph", observations={"functions": 0, "calls": 0, "paths_to_sinks": []})
+            return make_result(Status.OK, engine="call_graph", observations=result, count=len(result.get("paths_to_sinks", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="call_graph", error=str(e)[:500])
+
+    def task_ioc_extract(ctx, prev):
+        try:
+            from modules.knowledge.ioc_correlator import IoCCorrelator
+            corr = IoCCorrelator()
+            strings_res = prev.get("strings")
+            content = ""
+            if strings_res and strings_res.get("observations"):
+                obs = strings_res["observations"]
+                if isinstance(obs, list):
+                    content = "\n".join(str(x) for x in obs[:10000])
+                else:
+                    content = str(obs)
+            iocs = corr.extract_iocs(content)
+            total = sum(len(v) for v in iocs.values())
+            return make_result(Status.OK, engine="ioc_correlator", observations=iocs, count=total)
+        except Exception as e:
+            return make_result(Status.ERROR, engine="ioc_correlator", error=str(e)[:500])
+
+    def task_knowledge_graph(ctx, prev):
+        try:
+            from modules.knowledge.graph import KnowledgeGraph
+            kg = KnowledgeGraph()
+            # Aggregate findings
+            all_findings = []
+            for task_name, res in prev.items():
+                if res and isinstance(res, dict) and res.get("observations"):
+                    obs = res["observations"]
+                    if isinstance(obs, list):
+                        for item in obs:
+                            if isinstance(item, dict) and "type" in item:
+                                all_findings.append(item)
+                    elif isinstance(obs, dict) and "findings" in obs:
+                        all_findings.extend(obs["findings"][:50])
+
+            for finding in all_findings[:100]:
+                try:
+                    kg.add_finding(finding, workspace_id=ctx.get("workspace_id", "default"))
+                except Exception:
+                    continue
+
+            stats = kg.get_stats()
+            return make_result(Status.OK, engine="knowledge_graph", observations=stats)
+        except Exception as e:
+            return make_result(Status.ERROR, engine="knowledge_graph", error=str(e)[:500])
+
+    def task_enhanced_report(ctx, prev):
+        try:
+            from modules.reporting.enhanced_reporting import EnhancedReporting
+            reporter = EnhancedReporting()
+            all_findings = []
+            for res in prev.values():
+                if not res or not isinstance(res, dict):
+                    continue
+                obs = res.get("observations")
+                if isinstance(obs, list):
+                    for item in obs:
+                        if isinstance(item, dict) and ("type" in item or "severity" in item):
+                            all_findings.append(item)
+                elif isinstance(obs, dict):
+                    if "findings" in obs and isinstance(obs["findings"], list):
+                        all_findings.extend(obs["findings"])
+                    if "matches" in obs and isinstance(obs["matches"], list):
+                        for m in obs["matches"]:
+                            all_findings.append({
+                                "type": f"YARA: {m.get('rule','unknown')}",
+                                "severity": m.get("severity", "MEDIUM"),
+                                "description": m.get("description", ""),
+                                "file": m.get("file", ctx["target_path"]),
+                            })
+
+            # Deduplicate
+            seen = set()
+            unique = []
+            for f in all_findings:
+                key = (f.get("type", ""), f.get("file", ""), str(f.get("line", "")))
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(f)
+
+            report = reporter.generate_bugbounty_report(unique, {"target": ctx["target_path"], "type": "binary"})
+            sarif = reporter.generate_sarif(unique, ctx["target_path"])
+            return make_result(Status.OK, engine="enhanced_reporting", observations={"report": report, "sarif": sarif, "findings": unique}, count=len(unique))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="enhanced_reporting", error=str(e)[:500])
+
+    pipeline.add_tasks([
+        Task("cve_scan", task_cve_scan, ["strings", "disasm"], TaskPriority.HIGH, True, 60, False, "knowledge"),
+        Task("yara_scan", task_yara_scan, ["identify"], TaskPriority.HIGH, True, 60, False, "knowledge"),
+        Task("deps_scan", task_deps_scan, ["identify"], TaskPriority.MEDIUM, True, 60, False, "deps"),
+        Task("callgraph", task_callgraph, ["disasm"], TaskPriority.MEDIUM, True, 60, False, "analysis"),
+        Task("ioc_extract", task_ioc_extract, ["strings"], TaskPriority.MEDIUM, True, 30, False, "knowledge"),
+        Task("knowledge_graph", task_knowledge_graph, ["cve_scan", "yara_scan", "ioc_extract"], TaskPriority.LOW, True, 30, False, "knowledge"),
+        Task("enhanced_report", task_enhanced_report, ["knowledge_graph", "callgraph", "deps_scan"], TaskPriority.LOW, True, 30, False, "reporting"),
+    ])
+
+    return pipeline
+
+
 def create_unified_pipeline(config: ConfigManager, target_path: str, profile: str, target_kind: str) -> Pipeline:
-    """Crée le pipeline unifié basé sur le type de cible et le profil."""
+    """Crée le pipeline unifié basé sur le type de cible et le profil - v6.1 PRO."""
 
     if target_kind == "binary":
+        # Use PRO pipeline if profile demands
+        if profile in ("full", "deep", "pro", "bounty"):
+            return create_binary_pipeline_pro(config, target_path)
         return create_binary_pipeline(config, target_path)
     elif target_kind == "firmware":
         return create_firmware_pipeline(config, target_path)
     else:
-        # Generic pipeline
         pipeline = Pipeline(config=config)
 
         def task_generic(ctx, prev):
