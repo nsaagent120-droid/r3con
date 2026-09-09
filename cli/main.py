@@ -86,7 +86,10 @@ def apply_theme(name):
     THEME = Theme(THEME_PRESETS[THEME_NAME])
     console = Console(theme=THEME, no_color=_no_color())
 
-VERSION  = "5.0.2"
+try:
+    from core.__version__ import __version__ as VERSION
+except ImportError:
+    VERSION = "5.0.3"
 BANNER   = """\
  ██████╗ ██████╗  ██████╗ ██████╗ ███╗   ██╗
  ██╔══██╗╚════██╗██╔════╝██╔═══██╗████╗  ██║
