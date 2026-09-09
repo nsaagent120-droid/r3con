@@ -1,19 +1,71 @@
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
 *.egg-info/
+*.egg
 dist/
 build/
+.eggs/
 .venv/
 venv/
+env/
 .env
 *.env
-.DS_Store
-Thumbs.db
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Testing & coverage
 .pytest_cache/
 .coverage
-tests/samples/*.bin
-tests/samples/*.elf
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
 
-*.log
+# Linting & typing
 .ruff_cache/
 .mypy_cache/
+.pytype/
+.pyre/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# r3con specific
+*.log
+r3con-runs/
+fw_extracted/
+*.bin
+*.elf
+tests/samples/*.bin
+tests/samples/*.elf
+.cache/
+*.tmp
+*.temp
+
+# Workspaces & fuzzing (local)
+.fuzzing/
+.workspaces/
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Archives
+*.zip
+*.tar.gz
+*.tgz
+*.rar

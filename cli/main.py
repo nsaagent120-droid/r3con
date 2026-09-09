@@ -1,26 +1,48 @@
 #!/usr/bin/env python3
 """
-r3con v5.1.1 PRO - Modular CLI
-Lean main.py that imports groups - efficace et utile
-Structure:
-  cli/groups/helpers.py      -> UI shared (banner, theme, console, spinner...)
-  cli/groups/disasm.py       -> binary disassembly
-  cli/groups/audit.py        -> source audit
-  cli/groups/advanced.py     -> heap/crypto/kernel/toctou/proto
-  cli/groups/apk.py          -> APK analysis
-  cli/groups/firmware.py     -> firmware
-  cli/groups/research.py     -> 0day/CVE/variant/patch-diff/fuzz
-  cli/groups/network.py      -> passive network
-  cli/groups/tools.py        -> external tools
-  cli/groups/dynamic.py      -> GDB/pwndbg dynamic
-  cli/groups/analyze.py      -> analyze / analyze-pro / benchmark / correlate / diff
-  cli/groups/config.py       -> PRO config management
-  cli/groups/interactive.py  -> r2/gdb/workspace/plugins/session/interactive
+r3con v6.0.0 Titan-Omega - Modular CLI PRO
+Lean main.py that imports groups - efficace, utile, puissant
+
+Structure v6.0 (clean):
+  cli/groups/
+    helpers.py      -> UI shared (banner, theme, console, spinner...)
+    disasm.py       -> binary disassembly
+    audit.py        -> source audit
+    advanced.py     -> heap/crypto/kernel/toctou/proto
+    apk.py          -> APK analysis
+    firmware.py     -> firmware
+    research.py     -> 0day/CVE/variant/patch-diff/fuzz
+    network.py      -> passive network
+    tools.py        -> external tools 35+
+    dynamic.py      -> GDB/pwndbg dynamic
+    analyze.py      -> analyze / analyze-pro + federated workspaces auto
+    config.py       -> PRO config 300+ opts
+    workspace.py    -> workspaces fédérés cloisonnés + liens + partage
+    fuzzing.py      -> fuzzing lab AFL++/honggfuzz/Radamsa + triage
+    agent.py        -> agent autonome OODA
+    exploit.py      -> ROP + templates
+    interactive.py  -> r2/gdb/session/plugins/interactive
+
+  core/
+    cache.py              -> unified cache (remplace modules/cache/)
+    pipeline.py           -> graphe dépendances + niveaux + priorités
+    workspace_manager.py  -> workspaces fédérés
+    fuzzing_manager.py    -> fuzzing lab
+    agent.py              -> agent autonome
+    config_manager.py     -> layered config 10 profils
+
+  modules/
+    analysis_deep/        -> symbolic_exec PRO (main)
+    analysis/             -> wrapper deprecated vers analysis_deep
+    orchestration/        -> unified.py (fusion classic+enhanced+pipeline)
+    exploitation/         -> ROP generator
+    fuzzing/              -> adapters AFL++/honggfuzz
+    knowledge/            -> CVE DB offline
 
 Efficacité:
-  - Before: 1986L monolithe, tout chargé à chaque fois
-  - After:  ~250L main + lazy groups, chargement modulaire
-  - Unified orchestrator avec pipeline + cache
+  - v5.0: 1986L monolithe
+  - v6.0: 150L main + 15 groupes modulaires <300L chacun
+  - Pipeline + cache + workspaces fédérés + fuzzing lab + agent
 """
 from __future__ import annotations
 import sys
