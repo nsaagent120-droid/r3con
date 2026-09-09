@@ -8,6 +8,15 @@ r3con est un orchestrateur d’analyses de sécurité local. Il agrège des anal
 
 ## 2. Installation et profils
 
+L’installation automatisée complète est disponible dans `scripts/install_full.sh`. Elle est idempotente : elle peut être relancée après une interruption et réutilise le virtualenv existant.
+
+```bash
+bash scripts/install_full.sh --yes
+bash scripts/install_full.sh --docker --yes
+```
+
+Utilisez `--no-system` sur une machine où vous ne souhaitez pas modifier les paquets système, `--no-extras` pour ne pas tenter les outils optionnels, `--no-tests` pour ignorer la validation finale et `--venv PATH` pour choisir le chemin du virtualenv. Le script n’installe pas silencieusement Ghidra, JADX, Nuclei, Trivy ou Zeek : ces outils ont des méthodes de distribution différentes et sont listés dans son rapport final.
+
 La base requiert Python 3.9 ou plus récent, `click` et `rich`. La commande `r3con --help` doit fonctionner sans outil externe.
 
 | Profil | Commande | Usage |

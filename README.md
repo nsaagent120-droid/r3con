@@ -37,6 +37,14 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
+Pour une installation automatisée des dépendances système, de l’environnement Python, des extras `full,dev` et des répertoires locaux, utilisez :
+
+```bash
+bash scripts/install_full.sh --yes
+```
+
+Ajoutez `--docker` pour installer et activer Docker lorsque le gestionnaire de paquets le permet. Le script signale les outils lourds ou spécifiques à la distribution qui restent à installer séparément.
+
 L’installation minimale fournit la CLI et les fallbacks locaux. Pour les fonctionnalités supplémentaires, installez un profil ciblé :
 
 ```bash
