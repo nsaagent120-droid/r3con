@@ -78,8 +78,9 @@ from cli.groups.analyze import (
     benchmark_command, correlate_command, diff_command
 )
 from cli.groups.config import config
+from cli.groups.workspace import workspace as workspace_group
 from cli.groups.interactive import (
-    r2_command, workspace_command, gdb_command,
+    r2_command, gdb_command,
     session_cmd, plugins_group, interactive_mode
 )
 
@@ -122,6 +123,7 @@ cli.add_command(tools)
 cli.add_command(dynamic_group)
 cli.add_command(config)
 cli.add_command(plugins_group)
+cli.add_command(workspace_group)
 
 # Direct commands
 cli.add_command(analyze_command)
@@ -132,7 +134,6 @@ cli.add_command(diff_command)
 
 # Interactive / external
 cli.add_command(r2_command)
-cli.add_command(workspace_command)
 cli.add_command(gdb_command)
 cli.add_command(session_cmd)
 cli.add_command(interactive_mode)

@@ -7,7 +7,7 @@ import io
 import subprocess
 from pathlib import Path
 import click
-from .helpers import console, section, info, warn
+from .helpers import console, section, info, warn, ok
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -53,8 +53,10 @@ def analyze_command(target, profile, timeout, max_mb, workers, reverse_engine, w
 @click.option("--with-jadx", is_flag=True, help="Activer JADX")
 @click.option("--chain/--no-chain", default=True, help="Chaînage outils externes")
 @click.option("--use-pipeline/--no-pipeline", default=True, help="Use pipeline efficace")
+@click.option("--workspace", "workspace_name", default=None, help="Workspace pour cloisonnement et partage (PRO fédéré)")
+@click.option("--workspace-tags", default="", help="Tags pour cible dans workspace")
 @click.option("--json-output", type=click.Path(dir_okay=False), help="Rapport JSON")
-def analyze_pro_command(target, profile, config_path, timeout, workers, max_mb, with_ghidra, with_angr, with_jadx, chain, use_pipeline, json_output):
+def analyze_pro_command(target, profile, config_path, timeout, workers, max_mb, with_ghidra, with_angr, with_jadx, chain, use_pipeline, workspace_name, workspace_tags, json_output):
     try:
         from modules.orchestration.unified import UnifiedOrchestrator
         UNIFIED = True
@@ -65,12 +67,34 @@ def analyze_pro_command(target, profile, config_path, timeout, workers, max_mb, 
         except ImportError:
             from modules.orchestration.orchestrator import Orchestrator as EnhancedOrchestrator
 
+    # Workspace integration: load workspace config overrides if specified
+    ws_config_overrides = {}
+    ws_obj = None
+    if workspace_name:
+        try:
+            from core.workspace_manager import WorkspaceManager
+            mgr = WorkspaceManager()
+            ws_obj = mgr.get_workspace(workspace_name)
+            ws_meta = ws_obj.load_meta()
+            # Use workspace profile if profile=auto
+            if profile == "auto":
+                profile = ws_meta.get("profile", "full")
+            ws_config_overrides = ws_meta.get("config_overrides", {})
+            info(f"Workspace: {workspace_name} | Type: {ws_meta.get('type')} | Profile: {profile} | Isolation: {ws_meta.get('isolation')}")
+            # Show priority tools for this workspace
+            prio = ws_meta.get("priority_tools", [])[:5]
+            if prio:
+                info(f"Priority tools for this task: {', '.join(prio)} (tous les 35+ restent accessibles)")
+        except Exception as e:
+            warn(f"Workspace {workspace_name} non trouvé ou erreur: {e} — analyse sans workspace")
+
     if not UNIFIED:
         console.print("[yellow]Unified orchestrator non disponible, fallback[/]")
         from modules.orchestration.orchestrator import Orchestrator
         result = Orchestrator(target, profile=profile, timeout=timeout or 120).run()
     else:
         overrides = {}
+        overrides.update(ws_config_overrides)
         if timeout: overrides["analysis.timeout"] = timeout
         if workers: overrides["analysis.max_workers"] = workers
         if max_mb: overrides["analysis.max_file_size_mb"] = max_mb
@@ -88,7 +112,7 @@ def analyze_pro_command(target, profile, config_path, timeout, workers, max_mb, 
     target_info = result.get("target", {})
     if isinstance(target_info, dict):
         info(f"Target: {target_info.get('path', target)} | Kind: {target_info.get('kind')} | Confidence: {target_info.get('confidence')}")
-    info(f"Profile: {result.get('profile', profile)} | Chain: {'enabled' if chain else 'disabled'} | Pipeline: {'yes' if use_pipeline else 'no'}")
+    info(f"Profile: {result.get('profile', profile)} | Chain: {'enabled' if chain else 'disabled'} | Pipeline: {'yes' if use_pipeline else 'no'}" + (f" | Workspace: {workspace_name}" if workspace_name else ""))
     for name, value in result.get("results", {}).items():
         if isinstance(value, dict):
             status = value.get("status", "unknown")
@@ -99,6 +123,21 @@ def analyze_pro_command(target, profile, config_path, timeout, workers, max_mb, 
     tool_summary = result.get("tool_summary", {})
     if tool_summary:
         console.print(f"[dim]Tools: {tool_summary.get('present', 0)}/{tool_summary.get('total', 0)} available[/]")
+
+    # Save to workspace if specified (fédération + cloisonnement)
+    if ws_obj:
+        try:
+            tags = [t.strip() for t in workspace_tags.split(",") if t.strip()] if workspace_tags else []
+            ws_obj.add_target(target, kind=target_info.get("kind", "auto") if isinstance(target_info, dict) else "auto", tags=tags, notes=f"Analyzed with profile {profile}")
+            added = ws_obj.add_findings(result.get("findings", []), source=f"analyze-pro:{profile}")
+            # Save artifact report
+            artifact_path = ws_obj.artifacts_dir / f"{Path(target).name}_{int(time.time())}.json"
+            artifact_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+            ok(f"Résultats sauvegardés dans workspace {workspace_name}: +{added} findings, artifact {artifact_path.name}")
+            info(f"Partage possible: r3con workspace share {workspace_name} <other_ws> --items findings,targets")
+        except Exception as e:
+            warn(f"Erreur sauvegarde workspace: {e}")
+
     from .helpers import show_findings
     show_findings(result.get("findings", [])[:20])
 
