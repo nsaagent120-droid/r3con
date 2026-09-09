@@ -13,34 +13,68 @@ from pathlib import Path
 from typing import List, Dict, Optional
 
 
+def _validate_binary_path(path: str) -> bool:
+    """Validate binary path to prevent traversal."""
+    if not path or len(path) > 1024 or "\x00" in path:
+        return False
+    # Basic check, allow any file that exists
+    try:
+        p = Path(path)
+        if not p.exists() or not p.is_file():
+            return False
+        # Prevent huge files
+        if p.stat().st_size > 500 * 1024 * 1024:
+            return False
+    except (OSError, RuntimeError):
+        return False
+    return True
+
+
 def _run(cmd: List[str], timeout: int = 30,
          input_data: str = None) -> Optional[str]:
-    """Exécuter une commande et retourner stdout."""
+    """Exécuter une commande et retourner stdout - FIXED validation, limits."""
+    if not cmd or not isinstance(cmd, list):
+        return None
+    if len(cmd) > 20:
+        return None
+    # Validate each arg length
+    for arg in cmd:
+        if not isinstance(arg, str) or len(arg) > 1024 or "\x00" in arg:
+            return None
+
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=timeout,
-            input=input_data,
+            timeout=min(timeout, 120),
+            input=input_data[:10000] if input_data else None,
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-        # Parfois le résultat utile est dans stderr
-        if result.stderr.strip():
-            return result.stderr.strip()
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+        # Limit output size
+        output = result.stdout.strip() if result.returncode == 0 and result.stdout.strip() else ""
+        if not output and result.stderr.strip():
+            output = result.stderr.strip()
+
+        if len(output) > 2 * 1024 * 1024:
+            output = output[:2 * 1024 * 1024]
+
+        return output if output else None
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError, ValueError):
         pass
     return None
 
 
 def tool_exists(name: str) -> bool:
-    """Vérifier si un outil est disponible."""
+    """Vérifier si un outil est disponible - FIXED validation."""
+    if not name or not isinstance(name, str) or len(name) > 64 or "\x00" in name:
+        return False
+    if any(c in name for c in ";|&`$()><\n\r/"):
+        return False
     try:
         subprocess.run([name, '--version'],
                        capture_output=True, timeout=3)
         return True
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError, ValueError):
         return False
 
 
@@ -113,11 +147,14 @@ class Radare2Wrapper:
     """
     Wrapper Radare2/Rizin pour analyse avancée de binaires.
     Radare2 offre une analyse beaucoup plus profonde que Capstone seul.
+    FIXED: path validation, injection protection
     """
 
     def __init__(self, binary_path: str):
-        self.path    = binary_path
-        self.r2_cmd  = "rizin" if tool_exists("rizin") else "r2"
+        if not _validate_binary_path(binary_path):
+            raise ValueError(f"Invalid binary path: {binary_path[:100]}")
+        self.path = binary_path
+        self.r2_cmd = "rizin" if tool_exists("rizin") else "r2"
         self.available = tool_exists(self.r2_cmd)
 
     def _r2(self, commands: List[str], timeout: int = 30) -> Optional[str]:
@@ -159,9 +196,20 @@ class Radare2Wrapper:
 
     def disassemble_function(self, func_name: str,
                               max_insn: int = 200) -> str:
-        """Désassembler une fonction via r2 (résultat de qualité)."""
+        """Désassembler une fonction via r2 (résultat de qualité) - FIXED injection."""
         if not self.available:
             return "radare2/rizin not available"
+
+        # Validate func_name to prevent injection
+        if not func_name or len(func_name) > 256 or any(c in func_name for c in ";|&`$()><\n\r"):
+            return "Invalid function name"
+
+        # Only allow safe chars
+        import re
+        if not re.match(r'^[a-zA-Z0-9_@:$?]+$', func_name):
+            # Allow sym. prefix but still safe
+            if not re.match(r'^[a-zA-Z0-9_.:@$?]+$', func_name):
+                return "Invalid function name"
 
         out = _run([
             self.r2_cmd, "-q", "-A",
@@ -229,10 +277,13 @@ class GDBWrapper:
     """
     Wrapper GDB pour analyse dynamique basique.
     Génère des scripts GDB et les exécute.
+    FIXED: path validation
     """
 
     def __init__(self, binary_path: str):
-        self.path      = binary_path
+        if not _validate_binary_path(binary_path):
+            raise ValueError(f"Invalid binary path: {binary_path[:100]}")
+        self.path = binary_path
         self.available = tool_exists("gdb")
 
     def _gdb(self, commands: List[str],
@@ -273,9 +324,15 @@ class GDBWrapper:
         return []
 
     def disassemble_function(self, func_name: str) -> str:
-        """Désassembler une fonction via GDB."""
+        """Désassembler une fonction via GDB - FIXED injection."""
         if not self.available:
             return "GDB not available"
+        if not func_name or len(func_name) > 256 or any(c in func_name for c in ";|&`$()><\n\r"):
+            return "Invalid function name"
+        import re
+        if not re.match(r'^[a-zA-Z0-9_@:$?]+$', func_name):
+            if not re.match(r'^[a-zA-Z0-9_.:@$?]+$', func_name):
+                return "Invalid function name"
         out = self._gdb([f"disassemble {func_name}"])
         return out or f"Could not disassemble {func_name}"
 

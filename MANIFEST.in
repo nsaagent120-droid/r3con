@@ -1,0 +1,23 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include SECURITY_AUDIT.md
+include QUICKSTART.md
+include config.yaml
+include requirements.txt
+recursive-include examples *
+recursive-include docs *
+recursive-include cli *.py
+recursive-include core *.py
+recursive-include modules *.py
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.so
+global-exclude .DS_Store
+prune build
+prune dist
+prune .git
+prune .venv
+prune fw_extracted
+prune .pytest_cache
+prune __pycache__

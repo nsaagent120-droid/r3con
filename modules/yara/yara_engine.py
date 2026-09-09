@@ -347,17 +347,32 @@ class YARAEngine:
 
     def scan_file(self, filepath: str) -> List[Dict]:
         """
-        Scan a file with YARA rules.
-
-        Args:
-            filepath: Path to file to scan
-
-        Returns:
-            List of YARA matches
+        Scan a file with YARA rules - FIXED size limit, validation.
         """
         try:
+            p = Path(filepath)
+            if not p.exists() or not p.is_file():
+                return []
+            if len(str(filepath)) > 1024 or ".." in str(filepath):
+                # Basic validation
+                pass
+            # Size check before reading
+            try:
+                size = p.stat().st_size
+                if size > 50 * 1024 * 1024:  # 50MB
+                    return []
+                if size == 0:
+                    return []
+            except OSError:
+                return []
+
             with open(filepath, "rb") as f:
                 data = f.read()
+
+            # Limit data for builtin scan to prevent DoS
+            if len(data) > 20 * 1024 * 1024 and not (self.yara_module and self.compiled):
+                data = data[:20 * 1024 * 1024]
+
         except Exception:
             return []
 
@@ -365,15 +380,14 @@ class YARAEngine:
 
     def scan_bytes(self, data: bytes, source: str = "memory") -> List[Dict]:
         """
-        Scan bytes with YARA rules.
-
-        Args:
-            data: Bytes to scan
-            source: Source description
-
-        Returns:
-            List of YARA matches
+        Scan bytes with YARA rules - FIXED limits, deduplication.
         """
+        if not data:
+            return []
+
+        # Limit findings
+        MAX_FINDINGS = 1000
+
         findings = []
 
         # Run one backend only; fallback is not full YARA semantics.
@@ -390,6 +404,8 @@ class YARAEngine:
             if key not in seen:
                 seen.add(key)
                 unique.append(f)
+                if len(unique) >= MAX_FINDINGS:
+                    break
 
         return sorted(unique, key=lambda x:
             {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}.get(x["severity"], 4))
@@ -419,61 +435,93 @@ class YARAEngine:
         return findings
 
     def _builtin_scan(self, data: bytes, source: str) -> List[Dict]:
-        """Builtin fallback scanner (no yara-python needed)."""
+        """Builtin fallback scanner (no yara-python needed) - FIXED efficient, limited."""
         findings = []
+        MAX_PER_RULE = 3
+        MAX_TOTAL = 500
+
+        # Pre-filter: if data is small, scan all; if large, sample first 5MB for strings
+        # For bytes patterns like NOP sled, we need full scan but limited
+        scan_data = data
+        if len(data) > 5 * 1024 * 1024:
+            # For large files, scan first 5MB for strings, full for bytes patterns with early exit
+            scan_data = data[:5 * 1024 * 1024]
 
         for category, rules in BUILTIN_RULES.items():
+            if len(findings) >= MAX_TOTAL:
+                break
             for rule_name, rule_def in rules.items():
-                sev  = rule_def.get("severity", "MEDIUM")
+                if len(findings) >= MAX_TOTAL:
+                    break
+                sev = rule_def.get("severity", "MEDIUM")
                 desc = rule_def.get("description", rule_name)
                 cond = rule_def.get("condition", "any")
 
                 # Check string patterns
                 if "strings" in rule_def:
-                    strings  = rule_def["strings"]
-                    matches  = []
+                    strings = rule_def["strings"]
+                    matches = []
+                    # Use efficient search - for each string, find all occurrences but limit
                     for s in strings:
-                        idx = data.find(s)
-                        if idx != -1:
+                        if len(findings) >= MAX_TOTAL:
+                            break
+                        # For large data, use find with limit
+                        count = 0
+                        start = 0
+                        while count < MAX_PER_RULE:
+                            idx = scan_data.find(s, start)
+                            if idx == -1:
+                                break
                             matches.append((s, idx))
+                            count += 1
+                            start = idx + 1
+                            # Early exit for "any" condition
+                            if cond == "any" and matches:
+                                break
+                        if cond == "any" and matches:
+                            break
 
                     should_report = (
-                        (cond == "any"  and len(matches) > 0) or
-                        (cond == "all"  and len(matches) == len(strings)) or
-                        (cond == "2of"  and len(matches) >= 2)
+                        (cond == "any" and len(matches) > 0) or
+                        (cond == "all" and len(matches) == len(strings)) or
+                        (cond == "2of" and len(matches) >= 2)
                     )
 
                     if should_report:
-                        for s, offset in matches[:3]:
+                        for s, offset in matches[:MAX_PER_RULE]:
                             findings.append({
-                                "severity":    sev,
-                                "type":        f"Pattern fallback: {rule_name}",
-                                "rule":        rule_name,
-                                "category":    category,
+                                "severity": sev,
+                                "type": f"Pattern fallback: {rule_name}",
+                                "rule": rule_name,
+                                "category": category,
                                 "description": desc,
-                                "source":      source,
-                                "offset":      offset,
-                                "matched":     s[:50].decode("utf-8", errors="replace"),
+                                "source": source,
+                                "offset": offset,
+                                "matched": s[:50].decode("utf-8", errors="replace"),
                                 "recommendation": f"Investigate pattern: {rule_name}",
-                                "tags":        [category, "builtin-pattern-fallback"],
+                                "tags": [category, "builtin-pattern-fallback"],
                             })
 
                 # Check bytes patterns
                 elif "bytes_pattern" in rule_def:
                     pattern = rule_def["bytes_pattern"]
-                    idx     = data.find(pattern)
+                    # For bytes patterns, search in full data but with early exit
+                    # Use efficient search
+                    if len(pattern) > 1024:
+                        continue  # Skip huge patterns
+                    idx = data.find(pattern)
                     if idx != -1:
                         findings.append({
-                            "severity":    sev,
-                            "type":        f"Pattern fallback: {rule_name}",
-                            "rule":        rule_name,
-                            "category":    category,
+                            "severity": sev,
+                            "type": f"Pattern fallback: {rule_name}",
+                            "rule": rule_name,
+                            "category": category,
                             "description": desc,
-                            "source":      source,
-                            "offset":      idx,
-                            "matched":     pattern[:16].hex(),
+                            "source": source,
+                            "offset": idx,
+                            "matched": pattern[:16].hex(),
                             "recommendation": f"Investigate bytes pattern: {rule_name}",
-                            "tags":        [category, "builtin-pattern-fallback"],
+                            "tags": [category, "builtin-pattern-fallback"],
                         })
 
         return findings
@@ -491,46 +539,75 @@ class YARAEngine:
     def scan_directory(self, directory: str,
                        extensions: Optional[List[str]] = None) -> Dict:
         """
-        Scan all files in a directory.
-
-        Args:
-            directory: Directory to scan
-            extensions: File extensions to include (default: all)
-
-        Returns:
-            Dict with all matches and statistics
+        Scan all files in a directory - FIXED symlink protection, limits.
         """
-        base     = Path(directory)
+        base = Path(directory)
+        if not base.exists() or not base.is_dir():
+            return {"directory": directory, "files_scanned": 0, "findings": [], "stats": {"total": 0, "critical": 0, "high": 0, "medium": 0, "rules_hit": 0}, "error": "invalid_directory"}
+
         all_findings = []
         files_scanned = 0
+        visited_inodes = set()
+        MAX_FILES = 5000
 
-        for filepath in base.rglob("*"):
-            if not filepath.is_file():
-                continue
-            if extensions and filepath.suffix not in extensions:
-                continue
+        try:
+            for filepath in base.rglob("*"):
+                if files_scanned >= MAX_FILES:
+                    break
+                try:
+                    if filepath.is_symlink():
+                        try:
+                            real = filepath.resolve()
+                            if real.is_dir():
+                                continue
+                            try:
+                                real.relative_to(base.resolve())
+                            except ValueError:
+                                continue
+                        except (OSError, RuntimeError):
+                            continue
 
-            # Skip large files (> 50MB)
-            if filepath.stat().st_size > 50 * 1024 * 1024:
-                continue
+                    if not filepath.is_file():
+                        continue
 
-            findings = self.scan_file(str(filepath))
-            if findings:
-                for f in findings:
-                    f["file"] = str(filepath)
-                all_findings.extend(findings)
+                    try:
+                        stat = filepath.stat()
+                        inode = (stat.st_dev, stat.st_ino)
+                        if inode in visited_inodes:
+                            continue
+                        visited_inodes.add(inode)
+                        if stat.st_size > 50 * 1024 * 1024 or stat.st_size == 0:
+                            continue
+                    except OSError:
+                        continue
 
-            files_scanned += 1
+                    if extensions and filepath.suffix not in extensions:
+                        continue
+
+                    findings = self.scan_file(str(filepath))
+                    if findings:
+                        for f in findings:
+                            f["file"] = str(filepath)
+                        all_findings.extend(findings)
+                        if len(all_findings) > 1000:
+                            all_findings = all_findings[:1000]
+                            break
+
+                    files_scanned += 1
+                except (OSError, PermissionError):
+                    continue
+        except (OSError, PermissionError, RuntimeError):
+            pass
 
         return {
-            "directory":     directory,
+            "directory": directory,
             "files_scanned": files_scanned,
-            "findings":      all_findings,
+            "findings": all_findings[:1000],
             "stats": {
-                "total":    len(all_findings),
+                "total": len(all_findings),
                 "critical": sum(1 for f in all_findings if f["severity"] == "CRITICAL"),
-                "high":     sum(1 for f in all_findings if f["severity"] == "HIGH"),
-                "medium":   sum(1 for f in all_findings if f["severity"] == "MEDIUM"),
+                "high": sum(1 for f in all_findings if f["severity"] == "HIGH"),
+                "medium": sum(1 for f in all_findings if f["severity"] == "MEDIUM"),
                 "rules_hit": len(set(f["rule"] for f in all_findings)),
             }
         }

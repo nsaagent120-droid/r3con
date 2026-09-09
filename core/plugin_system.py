@@ -130,6 +130,45 @@ def default_registry() -> PluginRegistry:
     registry.register(CommandPlugin(PluginSpec("binwalk", "Firmware extraction and signature scan", "binwalk", ["firmware", "extraction"]), lambda t: ["binwalk", "--json", t]))
     from modules.dynamic.gdb_analyzer import DynamicAnalyzer
     registry.register(AdapterPlugin(PluginSpec("gdb", "GDB dynamic binary analysis", "gdb", ["dynamic", "debug"]), lambda t, timeout: DynamicAnalyzer(t)))
+
+    # Malware domain plugins v6.2
+    registry.register(CommandPlugin(PluginSpec("pefile", "PE file analysis via pefile", "python3", ["malware", "pe"]), lambda t: ["python3", "-m", "pefile", t]))
+    registry.register(CommandPlugin(PluginSpec("die", "Detect It Easy - packer detection", "diec", ["malware", "packer"]), lambda t: ["diec", "-j", t]))
+    registry.register(CommandPlugin(PluginSpec("upx", "UPX unpacker", "upx", ["malware", "unpack"]), lambda t: ["upx", "-t", t]))
+    registry.register(CommandPlugin(PluginSpec("capa", "FLARE capa - capability detection", "capa", ["malware", "capabilities"]), lambda t: ["capa", "-j", t]))
+    registry.register(CommandPlugin(PluginSpec("exiftool", "ExifTool metadata extraction", "exiftool", ["malware", "forensics", "metadata"]), lambda t: ["exiftool", "-j", t]))
+    registry.register(CommandPlugin(PluginSpec("xxd", "Hex dump analysis", "xxd", ["malware", "hex"]), lambda t: ["xxd", t]))
+
+    # Network domain plugins v6.2
+    registry.register(CommandPlugin(PluginSpec("tshark", "TShark deep packet inspection", "tshark", ["network", "pcap", "ids"]), lambda t: ["tshark", "-n", "-r", t, "-q", "-z", "io,phs"]))
+    registry.register(CommandPlugin(PluginSpec("tcpdump", "Tcpdump packet analysis", "tcpdump", ["network", "pcap"]), lambda t: ["tcpdump", "-n", "-r", t, "-c", "100"]))
+    registry.register(CommandPlugin(PluginSpec("suricata", "Suricata IDS", "suricata", ["network", "ids", "threat"]), lambda t: ["suricata", "-r", t, "-l", "/tmp"]))
+    registry.register(CommandPlugin(PluginSpec("zeek", "Zeek network analysis", "zeek", ["network", "nsm", "logs"]), lambda t: ["zeek", "-C", "-r", t]))
+    registry.register(CommandPlugin(PluginSpec("nmap", "Nmap port scanner", "nmap", ["network", "scan", "recon"]), lambda t: ["nmap", "-sV", "-F", t]))
+
+    return registry
+
+
+def malware_registry() -> PluginRegistry:
+    """Registry spécialisé malware."""
+    registry = PluginRegistry()
+    registry.register(CommandPlugin(PluginSpec("pefile", "PE analysis", "python3", ["malware", "pe"]), lambda t: ["python3", "-m", "pefile", t]))
+    registry.register(CommandPlugin(PluginSpec("die", "Packer detection", "diec", ["malware", "packer"]), lambda t: ["diec", "-j", t]))
+    registry.register(CommandPlugin(PluginSpec("capa", "Capability detection", "capa", ["malware", "capabilities"]), lambda t: ["capa", "-j", t]))
+    registry.register(CommandPlugin(PluginSpec("yara", "YARA malware scan", "yara", ["malware", "yara"]), lambda t: ["yara", "-r", t, t]))
+    registry.register(CommandPlugin(PluginSpec("strings", "Strings extraction", "strings", ["malware", "strings"]), lambda t: ["strings", "-a", "-n", "6", t]))
+    registry.register(CommandPlugin(PluginSpec("exiftool", "Metadata", "exiftool", ["malware", "metadata"]), lambda t: ["exiftool", "-j", t]))
+    return registry
+
+
+def network_registry() -> PluginRegistry:
+    """Registry spécialisé réseau."""
+    registry = PluginRegistry()
+    registry.register(CommandPlugin(PluginSpec("tshark", "TShark", "tshark", ["network", "pcap"]), lambda t: ["tshark", "-n", "-r", t, "-q", "-z", "io,phs"]))
+    registry.register(CommandPlugin(PluginSpec("suricata", "Suricata IDS", "suricata", ["network", "ids"]), lambda t: ["suricata", "-r", t, "-l", "/tmp"]))
+    registry.register(CommandPlugin(PluginSpec("zeek", "Zeek", "zeek", ["network", "nsm"]), lambda t: ["zeek", "-C", "-r", t]))
+    registry.register(CommandPlugin(PluginSpec("tcpdump", "Tcpdump", "tcpdump", ["network", "pcap"]), lambda t: ["tcpdump", "-n", "-r", t]))
+    registry.register(CommandPlugin(PluginSpec("nmap", "Nmap", "nmap", ["network", "scan"]), lambda t: ["nmap", "-sV", "-F", t]))
     return registry
 
 

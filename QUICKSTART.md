@@ -74,8 +74,8 @@ python -m modules.web.dashboard
 ## Lancer les tests
 
 ```bash
-python tests/test_all.py
-# 50/50 ✓
+python -m pytest -q
+# 31 passed, 2 skipped dans l’environnement de référence
 ```
 
 ## Aide
@@ -90,8 +90,7 @@ r3con research --help
 
 ## Documentation complète
 
-- `README.md` — Documentation complète
-- `LAYERS.md` — Architecture en couches (détaillée)
-- `docs/SETUP_AI_PROVIDERS.md` — Configuration de chaque provider IA
-- `docs/MULTI_AI_SETUP.md` — Configuration Multi-AI local
-- `docs/ADVANCED_LEVEL3.md` — Fonctionnalités avancées (Expert System, Taint, DB)
+- `README.md` — Vue d’ensemble et installation
+- `docs/USER_GUIDE.md` — Utilisation détaillée par domaine
+- `docs/MANUEL_TECHNIQUE_v7.2.md` — Architecture et modules
+- `docs/STABLE_RELEASE.md` — Validation et maintenance de la release stable

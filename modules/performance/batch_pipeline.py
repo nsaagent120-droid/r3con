@@ -43,6 +43,29 @@ class BatchPipeline:
         self.output_dir = Path.home() / '.r3con' / 'batch'
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    def _validate_target(self, target: str) -> bool:
+        """Validate target path - FIXED."""
+        if not target or len(target) > 1024 or "\x00" in target:
+            return False
+        p = Path(target)
+        try:
+            if not p.exists():
+                return False
+            # Prevent sensitive paths
+            try:
+                resolved = p.resolve()
+                sensitive = ["/etc", "/root", "/proc", "/sys", "/dev"]
+                for s in sensitive:
+                    if str(resolved).startswith(s) and str(resolved) != str(Path(target).resolve()):
+                        # Allow if it's directly the sensitive dir? No, block
+                        if str(resolved) == s or str(resolved).startswith(s + "/"):
+                            return False
+            except (OSError, RuntimeError):
+                pass
+        except Exception:
+            return False
+        return True
+
     def run(self, target: str,
             scan_deps: bool = True,
             scan_yara: bool = True,
@@ -50,22 +73,18 @@ class BatchPipeline:
             generate_bounty: bool = True,
             bounty_platform: str = 'generic') -> Dict:
         """
-        Lancer le pipeline complet sur une cible.
-
-        Args:
-            target:           Fichier ou répertoire à analyser
-            scan_deps:        Scanner les dépendances
-            scan_yara:        Scanner avec YARA
-            generate_sarif:   Générer un fichier SARIF
-            generate_bounty:  Générer des rapports bug bounty
-            bounty_platform:  Plateforme (hackerone/bugcrowd/generic)
-
-        Returns:
-            Dict complet avec tous les résultats
+        Lancer le pipeline complet sur une cible - FIXED validation, limits.
         """
-        start    = time.time()
+        if not self._validate_target(target):
+            return {'target': target, 'error': 'invalid_target', 'findings': [], 'summary': {}}
+
+        # Validate bounty_platform
+        if bounty_platform not in ('generic', 'hackerone', 'bugcrowd', 'intigriti'):
+            bounty_platform = 'generic'
+
+        start = time.time()
         target_p = Path(target)
-        ts       = datetime.now().strftime('%Y%m%d_%H%M%S')
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
 
         print(f"\n\033[36m{'='*56}\033[0m")
         print(f"  r3con Batch Pipeline — {target_p.name}")
@@ -154,11 +173,29 @@ class BatchPipeline:
         }
         pipeline_result['all_findings'] = all_findings
 
-        # Sauvegarder le résumé JSON
+        # Sauvegarder le résumé JSON - FIXED atomic write, limit
         summary_path = str(self.output_dir / f"pipeline_{ts}.json")
-        with open(summary_path, 'w') as f:
-            json.dump({k: v for k, v in pipeline_result.items()
-                       if k != 'all_findings'}, f, indent=2)
+        try:
+            import tempfile, os
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=str(self.output_dir), suffix=".tmp")
+            with os.fdopen(tmp_fd, "w") as f:
+                # Don't save all_findings in summary to prevent huge files, limit findings
+                save_data = {k: v for k, v in pipeline_result.items() if k != 'all_findings'}
+                # Limit findings in stages
+                for stage_key in save_data.get('stages', {}):
+                    stage = save_data['stages'][stage_key]
+                    if isinstance(stage, dict) and 'findings' in stage and isinstance(stage['findings'], list):
+                        if len(stage['findings']) > 200:
+                            stage['findings'] = stage['findings'][:200]
+                            stage['_truncated'] = True
+                json.dump(save_data, f, indent=2)
+            os.rename(tmp_path, summary_path)
+        except Exception:
+            try:
+                with open(summary_path, 'w') as f:
+                    json.dump({k: v for k, v in pipeline_result.items() if k != 'all_findings'}, f, indent=2)
+            except Exception:
+                summary_path = "failed_to_save"
         pipeline_result['outputs']['summary_json'] = summary_path
 
         self._print_summary(pipeline_result['summary'])

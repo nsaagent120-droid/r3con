@@ -11,9 +11,26 @@ from pathlib import Path
 
 
 # ── Patterns d'analyse ───────────────────────────────────────
+# FIXED P2: Added more patterns including stack smashing, fortify, etc.
 
 # Patterns ASAN (AddressSanitizer)
 ASAN_PATTERNS = {
+    "stack smashing detected": {
+        "severity": "CRITICAL",
+        "type": "Stack Smashing Detected",
+        "cwe": "CWE-121",
+        "exploitable": True,
+        "description": "Stack canary overwritten - classic stack BOF",
+        "primitives": ["stack_overflow", "canary_bypass_needed", "potential_rce"],
+    },
+    "*** buffer overflow detected ***": {
+        "severity": "CRITICAL",
+        "type": "FORTIFY Buffer Overflow",
+        "cwe": "CWE-121",
+        "exploitable": True,
+        "description": "FORTIFY_SOURCE detected overflow - exploitable before abort",
+        "primitives": ["stack_overflow", "fortify_bypass"],
+    },
     "heap-buffer-overflow": {
         "severity":    "CRITICAL",
         "type":        "Heap Buffer Overflow",
@@ -545,16 +562,27 @@ class CrashAnalyzer:
         return frames[:20]
 
     def _extract_crash_address(self, text: str) -> Optional[str]:
-        """Extract the crash address."""
+        """Extract the crash address - FIXED more patterns."""
         patterns = [
             r"address (0x[0-9a-fA-F]+)",
             r"SIGSEGV.*?(0x[0-9a-fA-F]+)",
             r"Accessing address (0x[0-9a-fA-F]+)",
+            r"fault addr (0x[0-9a-fA-F]+)",
+            r"fault address (0x[0-9a-fA-F]+)",
+            r"SEGV.*at (0x[0-9a-fA-F]+)",
+            r"crash at (0x[0-9a-fA-F]+)",
+            r"\[0x([0-9a-fA-F]+)\]",
+            r"0x[0-9a-fA-F]+\s*:\s*.*fault",
+            r"rip.*?(0x[0-9a-fA-F]{6,})",
+            r"eip.*?(0x[0-9a-fA-F]{6,})",
         ]
         for pat in patterns:
-            m = re.search(pat, text)
+            m = re.search(pat, text, re.IGNORECASE)
             if m:
-                return m.group(1)
+                addr = m.group(1)
+                if not addr.startswith("0x"):
+                    addr = "0x" + addr
+                return addr
         return None
 
     def _assess_exploitability(self, results: Dict) -> Dict:

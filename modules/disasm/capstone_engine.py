@@ -151,19 +151,19 @@ class DisasmEngine:
             return b"", 0
 
     def _load_all_sections(self) -> List[Tuple[str, bytes, int]]:
-        """Charger toutes les sections de code."""
+        """Charger uniquement les sections marquées exécutables."""
         sections = []
 
         if self._binary and LIEF_AVAILABLE:
             try:
                 for section in self._binary.sections:
                     name = section.name
-                    # Sections de code et de données intéressantes
-                    if any(x in name for x in ['.text', '.plt', '.init', '.fini',
-                                                'CODE', 'code', 'exec']):
+                    is_executable = self._section_is_executable(section)
+                    if is_executable:
                         content = bytes(section.content)
-                        if content:
+                        if content and len(content) > 0:
                             sections.append((name, content, section.virtual_address))
+
             except Exception:
                 pass
 
@@ -173,6 +173,28 @@ class DisasmEngine:
                 sections.append((".text", data, addr))
 
         return sections
+
+    @staticmethod
+    def _section_is_executable(section) -> bool:
+        """Return whether a LIEF section is explicitly executable."""
+        try:
+            # ELF SHF_EXECINSTR. LIEF exposes ELF section flags as an int.
+            flags = getattr(section, "flags", None)
+            if isinstance(flags, int):
+                return bool(flags & 0x4)
+
+            # PE section characteristics. Avoid treating every PE section as code.
+            checker = getattr(section, "has_characteristic", None)
+            if checker is not None:
+                for characteristic in ("MEM_EXECUTE", "IMAGE_SCN_MEM_EXECUTE"):
+                    try:
+                        if checker(characteristic):
+                            return True
+                    except (TypeError, ValueError):
+                        continue
+        except Exception:
+            return False
+        return False
 
     def disasm_main(self, max_insn: int = None) -> str:
         """

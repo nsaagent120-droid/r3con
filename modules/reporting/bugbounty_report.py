@@ -40,24 +40,42 @@ class BugBountyReportGenerator:
         self.reports_dir = Path.home() / ".r3con" / "reports" / "bugbounty"
         self.reports_dir.mkdir(parents=True, exist_ok=True)
 
+    def _validate_inputs(self, target: str, program: str, researcher: str, output_path: Optional[str]):
+        """Validate inputs - FIXED P2."""
+        if not target or len(target) > 1024 or "\x00" in target:
+            raise ValueError("Invalid target")
+        if program not in ("generic", "hackerone", "bugcrowd", "intigriti"):
+            raise ValueError("Invalid program")
+        if not researcher or len(researcher) > 256 or "\x00" in researcher:
+            raise ValueError("Invalid researcher")
+        if output_path:
+            if len(output_path) > 1024 or "\x00" in output_path:
+                raise ValueError("Invalid output_path")
+            p = Path(output_path)
+            try:
+                resolved = p.resolve()
+                sensitive = ["/etc", "/root", "/proc", "/sys", "/dev", "/bin", "/sbin"]
+                for s in sensitive:
+                    if str(resolved).startswith(s):
+                        raise ValueError(f"Refusing to write to sensitive path: {s}")
+            except (OSError, RuntimeError):
+                pass
+
     def generate(self, findings: List[Dict],
                  target: str,
                  program: str = "generic",
                  researcher: str = "Security Researcher",
                  output_path: Optional[str] = None) -> str:
         """
-        Generate a complete bug bounty report.
-
-        Args:
-            findings: List of r3con findings
-            target: Target application/binary analyzed
-            program: Bug bounty platform (hackerone/bugcrowd/intigriti/generic)
-            researcher: Researcher name
-            output_path: Custom output path
-
-        Returns:
-            Path to generated report
+        Generate a complete bug bounty report - FIXED P2 validation, limits, atomic write.
         """
+        self._validate_inputs(target, program, researcher, output_path)
+
+        # Limit findings to prevent DoS
+        if not isinstance(findings, list):
+            findings = []
+        findings = findings[:500]
+
         # Filter to CRITICAL and HIGH only for bug bounty
         reportable = [f for f in findings
                       if f.get("severity") in ("CRITICAL","HIGH","MED","MEDIUM")]
@@ -75,15 +93,25 @@ class BugBountyReportGenerator:
         # Generate summary report
         summary = self._generate_summary(findings, target, program, researcher)
 
-        # Save
+        # Save with atomic write
         if not output_path:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = str(self.reports_dir / f"bugbounty_{program}_{ts}.md")
+            safe_program = "".join(c for c in program if c.isalnum() or c in "-_")[:20]
+            output_path = str(self.reports_dir / f"bugbounty_{safe_program}_{ts}.md")
 
-        with open(output_path, "w") as f:
-            f.write(summary)
-            f.write("\n\n---\n\n")
-            f.write("\n\n---\n\n".join(reports))
+        import tempfile, os
+        try:
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=str(Path(output_path).parent) if Path(output_path).parent.exists() else None, suffix=".tmp")
+            with os.fdopen(tmp_fd, "w") as f:
+                f.write(summary)
+                f.write("\n\n---\n\n")
+                f.write("\n\n---\n\n".join(reports))
+            os.rename(tmp_path, output_path)
+        except Exception:
+            with open(output_path, "w") as f:
+                f.write(summary)
+                f.write("\n\n---\n\n")
+                f.write("\n\n---\n\n".join(reports))
 
         return output_path
 

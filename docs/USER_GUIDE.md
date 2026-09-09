@@ -1,0 +1,257 @@
+# Guide utilisateur r3con 7.2.0
+
+## 1. Positionnement et limites
+
+r3con est un orchestrateur d’analyses de sécurité local. Il agrège des analyseurs spécialisés et produit des résultats structurés. Il est adapté au triage, à l’audit de code autorisé, à la recherche, à la préparation de rapports et à l’intégration CI. Il ne garantit ni l’absence de vulnérabilité ni l’exploitabilité d’un finding.
+
+> N’analysez que des systèmes, fichiers, applications et réseaux pour lesquels vous avez une autorisation explicite. Les fonctions réseau live, fuzzing et exploitation doivent être utilisées dans un laboratoire contrôlé.
+
+## 2. Installation et profils
+
+La base requiert Python 3.9 ou plus récent, `click` et `rich`. La commande `r3con --help` doit fonctionner sans outil externe.
+
+| Profil | Commande | Usage |
+|---|---|---|
+| Base | `python -m pip install -e .` | CLI, fallbacks, rapports de base |
+| Binaire | `python -m pip install -e '.[binary]'` | Capstone et LIEF |
+| Reporting | `python -m pip install -e '.[reporting]'` | Jinja2, YAML et export enrichi |
+| Web | `python -m pip install -e '.[web]'` | Dashboard Flask et templates |
+| AST | `python -m pip install -e '.[ast]'` | Analyse syntaxique C |
+| Symbolique | `python -m pip install -e '.[symbolic]'` | Contraintes avec Z3 |
+| IA | `python -m pip install -e '.[ai-all]'` | Fournisseurs compatibles OpenAI/Together |
+| Complet | `python -m pip install -e '.[full]'` | Tous les extras Python |
+| Développeur | `python -m pip install -e '.[dev]'` | Tests et qualité |
+
+Après installation :
+
+```bash
+r3con --version
+r3con tools status
+python -m pytest -q
+```
+
+## 3. Format général des commandes
+
+La plupart des commandes acceptent `--json` ou une option de rapport. Pour automatiser une analyse, privilégiez JSON ou SARIF plutôt que la sortie colorée. Désactivez les couleurs en CI :
+
+```bash
+r3con --no-color --no-banner audit file ./src/main.c
+```
+
+Consultez toujours l’aide locale, qui reflète exactement la version installée :
+
+```bash
+r3con GROUP --help
+r3con GROUP COMMAND --help
+```
+
+## 4. Audit de code source
+
+Le groupe `audit` recherche des défauts de mémoire, injections, secrets, cryptographie faible, erreurs de concurrence, problèmes web et constructions dangereuses. Les analyseurs AST sont utilisés lorsqu’ils sont disponibles ; sinon un fallback prudent est utilisé.
+
+```bash
+r3con audit file ./src/main.c
+r3con audit file ./src/main.c --lang c --focus memory --depth deep
+r3con audit dir ./src --recursive --report
+```
+
+Workflow recommandé : commencez par une analyse complète, relancez les catégories prioritaires, puis vérifiez chaque finding dans le code source. Conservez le rapport et marquez les faux positifs dans votre système de suivi. Les détections de secrets doivent être traitées comme sensibles et les rapports doivent être protégés.
+
+## 5. Binaires et reverse engineering
+
+Le groupe `disasm` combine parsing, strings, imports, protections et désassemblage. Les outils système `file`, `strings`, `nm`, `readelf` et `objdump` servent de fallbacks lorsque Capstone ou LIEF ne sont pas installés.
+
+```bash
+r3con disasm file ./bin/app --arch auto
+r3con disasm file ./bin/app --arch x86_64 --output pseudocode
+r3con disasm strings ./bin/app --min-len 6
+r3con disasm imports ./bin/app --vuln-check
+r3con tools check capstone
+```
+
+Pour une analyse approfondie, utilisez ensuite Ghidra, radare2/rizin ou un débogueur dans un environnement isolé. r3con facilite le triage ; il ne remplace pas une analyse de reverse interactive complète.
+
+## 6. Analyse avancée
+
+Le groupe `advanced` contient les analyses mémoire, crypto, kernel, TOCTOU et protocole :
+
+```bash
+r3con advanced heap ./src/allocator.c --allocator glibc
+r3con advanced crypto ./src/crypto.c
+r3con advanced kernel ./driver.c --type driver
+r3con advanced toctou ./src/handler.c
+r3con advanced proto ./src/protocol.c --protocol tls
+```
+
+Ces commandes produisent des hypothèses et des éléments de preuve. Les primitives d’exploitation et les scénarios doivent être vérifiés manuellement et ne doivent être exécutés que sur une cible de laboratoire.
+
+## 7. APK Android
+
+Le groupe `apk` inspecte le manifest, les permissions, les URLs, les secrets, le DEX et les bibliothèques natives. Les outils Android externes peuvent fournir une décompilation plus complète.
+
+```bash
+r3con apk analyze ./app.apk --report
+r3con apk permissions ./app.apk
+r3con apk manifest ./AndroidManifest.xml
+```
+
+Pour un audit mobile sérieux, complétez l’analyse statique par une revue du stockage local, des intents exportés, du TLS, de l’authentification et des composants exécutés. Ne distribuez jamais un APK ou un rapport contenant des secrets sans contrôle d’accès.
+
+## 8. Firmware et IoT
+
+Le groupe `firmware` calcule l’entropie, extrait les chaînes et recherche des indicateurs dans les images firmware. `binwalk` est optionnel pour l’extraction avancée.
+
+```bash
+r3con firmware analyze ./router.bin --report
+r3con firmware strings ./router.bin --min-len 6
+r3con firmware entropy ./router.bin --block-size 4096
+r3con firmware extract ./router.bin --output ./extracted
+```
+
+Travaillez sur une copie immuable, calculez un hash avant analyse et inspectez les fichiers extraits hors réseau. L’analyse d’un firmware peut révéler des clés, mots de passe et certificats ; traitez les sorties comme des données confidentielles.
+
+## 9. Malware et forensics
+
+Le groupe `malware` propose des analyseurs PE/ELF, IOC, comportement, classification, unpacking et anti-analyse.
+
+```bash
+r3con malware analyze ./sample --profile full --json
+r3con malware pe ./sample --json
+r3con malware elf ./sample --json
+r3con malware ioc ./sample --json
+r3con malware behavior ./sample --json
+```
+
+L’analyse statique doit être réalisée dans un environnement isolé. r3con ne doit pas être considéré comme un sandbox complet. Pour une exécution dynamique, utilisez une VM dédiée avec snapshots, réseau contrôlé et collecte séparée.
+
+## 10. Réseau et PCAP
+
+Le groupe `network` traite les captures offline et peut utiliser des outils système. Les captures live exigent une autorisation et des privilèges adaptés.
+
+```bash
+r3con network analyze ./capture.pcap --json
+r3con network threat ./capture.pcap --json
+r3con network flow ./capture.pcap --json
+r3con network dns ./capture.pcap --json
+r3con network live --interface eth0 --duration 30
+```
+
+Vérifiez le périmètre, la conservation et la destruction des captures. Les adresses, noms DNS, cookies et identifiants peuvent être des données personnelles ou confidentielles.
+
+## 11. Web, cloud et conteneurs
+
+Analyse SAST et wrappers :
+
+```bash
+r3con web analyze ./web-project --json
+r3con web nuclei https://example.test --severity medium,high,critical
+```
+
+Analyse cloud et infrastructure :
+
+```bash
+r3con cloud --help
+r3con container --help
+```
+
+Les commandes cloud doivent être lancées sur des configurations exportées ou des environnements autorisés. Avant une correction, examinez le contexte de déploiement : une règle peut être intentionnellement compensée par un contrôle externe.
+
+## 12. Secrets et décompilation
+
+Les commandes `secrets` recherchent des motifs connus et des valeurs à forte entropie. Une détection n’est pas une preuve qu’une valeur est active, mais elle doit être traitée comme potentiellement compromise.
+
+```bash
+r3con secrets --help
+r3con decompile --help
+```
+
+Après confirmation d’un secret, révoquez-le et remplacez-le hors du dépôt. Ne masquez pas simplement la valeur dans le rapport sans corriger la source et l’historique.
+
+## 13. Recherche, fuzzing et exploitation contrôlée
+
+`research` fournit des hypothèses, correspondances CVE et analyses de variantes. `fuzzing` gère des espaces de travail et des corpus. `exploit` fournit des helpers de reverse et de génération contrôlée.
+
+```bash
+r3con research hypothesis ./target.c --depth deep
+r3con research cve ./target --limit 20
+r3con fuzzing --help
+r3con exploit --help
+```
+
+Ces fonctionnalités ne doivent être utilisées que sur des cibles autorisées. Commencez par des entrées inoffensives, limitez les ressources et conservez les logs. La génération d’un template ou d’une chaîne ROP ne prouve pas que l’attaque est fiable.
+
+## 14. IA, sessions et workspaces
+
+Le groupe `ai` peut utiliser une IA locale ou un fournisseur configuré. Les données envoyées à un fournisseur externe doivent être explicitement approuvées et nettoyées des secrets.
+
+```bash
+r3con ai --help
+r3con interactive
+r3con session --help
+r3con workspace --help
+```
+
+Les workspaces séparent les cibles, notes, rapports et relations. Utilisez un workspace par engagement ou projet et exportez régulièrement les résultats importants.
+
+## 15. Rapports et CI
+
+Les rapports peuvent être générés depuis les résultats JSON. Les formats structurés sont recommandés pour l’intégration.
+
+```bash
+r3con report --help
+r3con report sarif --help
+r3con report pdf --help
+```
+
+Dans une CI :
+
+```bash
+python -m pip install -e '.[dev]'
+python -m compileall -q .
+python -m pytest -q
+ruff check .
+```
+
+Conservez les rapports comme artefacts privés. Utilisez SARIF pour les plateformes qui le supportent et ajoutez une revue humaine avant toute publication.
+
+## 16. Dashboard, Docker et configuration
+
+Le dashboard et les intégrations sont optionnels. Vérifiez la configuration avant de lancer un service réseau :
+
+```bash
+r3con dashboard --help
+docker compose config
+docker build -t r3con:7.2.0 .
+```
+
+Le conteneur doit être exécuté avec des volumes explicites, sans privilèges inutiles et sans exposer de ports à Internet par défaut. Consultez `docker-compose.yml` et adaptez les secrets à votre gestionnaire de secrets.
+
+## 17. Dépannage
+
+| Symptôme | Cause probable | Action |
+|---|---|---|
+| `Missing dependencies: click, rich` | Installation minimale absente | `python -m pip install -e .` |
+| Capstone/LIEF absent | Extra binaire non installé | `python -m pip install -e '.[binary]'` |
+| Commande externe absente | Outil système non installé | `r3con tools status` puis installer uniquement l’outil requis |
+| Rapport PDF non généré | WeasyPrint/Markdown absent ou incompatible | Utiliser le fallback Markdown ou installer `.[reporting]` |
+| Test ignoré radare2/rizin | Outil non installé | Installer l’outil dans l’environnement CI si nécessaire |
+| Sortie illisible en CI | Couleurs terminal | Ajouter `--no-color --no-banner` |
+| Résultats trop nombreux | Profil trop large | Filtrer par domaine, sévérité et confiance |
+
+## 18. Contrat de qualité
+
+Avant toute release ou déploiement :
+
+```bash
+python -m compileall -q .
+python -m pytest -q -rs
+ruff check .
+python -m build
+python -m twine check dist/*
+```
+
+La release est considérée saine lorsque les tests obligatoires passent, les outils optionnels absents sont signalés et aucun secret n’est présent dans les artefacts ou les logs.
+
+[1]: https://docs.python.org/3/library/venv.html "Documentation Python venv"
+[2]: https://sarifweb.azurewebsites.net/ "SARIF specification"
+[3]: https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/sarif-support-for-code-scanning "GitHub SARIF support"
