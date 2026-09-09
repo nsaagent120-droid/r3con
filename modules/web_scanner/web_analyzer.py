@@ -62,10 +62,11 @@ class WebAnalyzer:
 
         # SQLi
         sqli_patterns = [
-            (r"query\s*\(.*\+.*\)|execute\s*\(.*\+", "SQLi via concatenation", "HIGH"),
-            (r"SELECT.*FROM.*WHERE.*\$\{|SELECT.*\+.*request", "SQLi in query", "HIGH"),
-            (r"db\.query\s*\(.*req\.|db\.execute\s*\(.*req\.", "SQLi via req", "CRITICAL"),
-            (r"\$_GET.*query|\$_POST.*query|\$_REQUEST.*SELECT", "PHP SQLi", "HIGH"),
+            (r"query\s*\(.*\+.*\)|execute\s*\(.*\+|SELECT.*\+.*req|SELECT.*\+.*request", "SQLi via concatenation", "HIGH"),
+            (r"SELECT.*FROM.*WHERE.*\$\{|SELECT.*\+.*request|\"SELECT.*\".*\+.*req", "SQLi in query", "HIGH"),
+            (r"db\.query\s*\(.*req\.|db\.execute\s*\(.*req\.|query.*\+.*params|SELECT.*\+.*params", "SQLi via req", "CRITICAL"),
+            (r"\$_GET.*query|\$_POST.*query|\$_REQUEST.*SELECT|\$.*=.*\$_GET.*SELECT", "PHP SQLi", "HIGH"),
+            (r"SELECT.*FROM.*WHERE.*=.*\+|SELECT.*\+.*\+", "SQLi Generic Concat", "HIGH"),
         ]
         for pat, desc, sev in sqli_patterns:
             try:
@@ -76,10 +77,10 @@ class WebAnalyzer:
 
         # XSS
         xss_patterns = [
-            (r"innerHTML\s*=\s*.*\+|innerHTML\s*\+=", "XSS via innerHTML", "HIGH"),
-            (r"document\.write\s*\(.*\+|document\.writeln.*\+", "XSS via document.write", "HIGH"),
-            (r"echo\s*\$_GET|echo\s*\$_POST|print\s*\$_REQUEST", "PHP Reflected XSS", "HIGH"),
-            (r"\.html\s*\(.*req\.|\.append\s*\(.*req\.", "jQuery XSS", "MEDIUM"),
+            (r"innerHTML\s*=.*\+|innerHTML\s*\+=|innerHTML\s*=\s*[a-zA-Z_]", "XSS via innerHTML", "HIGH"),
+            (r"document\.write\s*\(.*\+|document\.writeln.*\+|document\.write\s*\(.*req", "XSS via document.write", "HIGH"),
+            (r"echo\s*\$_GET|echo\s*\$_POST|print\s*\$_REQUEST|echo\s*\$.*_GET", "PHP Reflected XSS", "HIGH"),
+            (r"\.html\s*\(.*req\.|\.append\s*\(.*req\.|innerHTML\s*=", "jQuery XSS", "MEDIUM"),
         ]
         for pat, desc, sev in xss_patterns:
             try:
@@ -90,8 +91,8 @@ class WebAnalyzer:
 
         # SSTI
         ssti_patterns = [
-            (r"render_template_string\s*\(.*\+|render_template_string.*%|render_template_string.*format", "SSTI via render_template_string", "CRITICAL"),
-            (r"Template\s*\(.*\+|jinja2.*\+.*request", "SSTI via Template", "HIGH"),
+            (r"render_template_string\s*\(.*\+|render_template_string.*%|render_template_string.*format|render_template_string\s*\(.*request", "SSTI via render_template_string", "CRITICAL"),
+            (r"Template\s*\(.*\+|jinja2.*\+.*request|Template\s*\(.*request", "SSTI via Template", "HIGH"),
         ]
         for pat, desc, sev in ssti_patterns:
             try:
@@ -102,8 +103,8 @@ class WebAnalyzer:
 
         # LFI / Path Traversal
         lfi_patterns = [
-            (r"open\s*\(.*\+.*request|fopen\s*\(.*\$_GET|include\s*\(.*\$_GET|require\s*\(.*\$_POST", "LFI/Path Traversal", "HIGH"),
-            (r"readFile\s*\(.*req\.|createReadStream.*req\.", "Node.js LFI", "HIGH"),
+            (r"open\s*\(.*\+.*request|fopen\s*\(.*\$_GET|include\s*\(.*\$_GET|require\s*\(.*\$_POST|open\s*\(.*req\.", "LFI/Path Traversal", "HIGH"),
+            (r"readFile\s*\(.*req\.|createReadStream.*req\.|readFile\s*\(.*query|createReadStream\s*\(.*params", "Node.js LFI", "HIGH"),
         ]
         for pat, desc, sev in lfi_patterns:
             try:
