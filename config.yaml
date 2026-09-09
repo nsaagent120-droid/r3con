@@ -1,9 +1,9 @@
-# r3con v5.0.3 PRO - Configuration puissante et complète
+# r3con v7.2.0 PRO - Configuration puissante et complète
 # Copier vers ~/.r3con/config.yaml pour personnaliser
 # Surcharges env: R3CON_ANALYSIS_TIMEOUT=300, R3CON_TOOL_GHIDRA=/opt/ghidra/...
 # Voir config.pro.yaml pour toutes les options
 
-version: "5.0.3"
+version: "7.2.0"
 profile: "auto"
 
 analysis:

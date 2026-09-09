@@ -1,5 +1,5 @@
 """
-r3con v5.0.3 - Professional Config Manager
+r3con v7.2.0 - Professional Config Manager
 Powerful, layered configuration: defaults < YAML < env < CLI
 Supports profiles, validation, dot-notation, and per-tool config
 """
@@ -18,7 +18,7 @@ except ImportError:
     YAML_AVAILABLE = False
 
 DEFAULT_CONFIG = {
-    "version": "5.0.3",
+    "version": "7.2.0",
     "profile": "auto",  # auto, quick, deep, full, binary, firmware, apk, network, source, custom
 
     "analysis": {

@@ -15,7 +15,7 @@ def dashboard():
     """📊 Dashboard - Real-time WebSocket + ML + All domains (v7.2)."""
 
 @dashboard.command("start")
-@click.option("--host", default="0.0.0.0", show_default=True, help="Host to bind")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Host to bind")
 @click.option("--port", default=5000, show_default=True, help="Port")
 @click.option("--no-websocket", is_flag=True, help="Disable WebSocket, use polling")
 @click.option("--debug", is_flag=True, help="Debug mode")

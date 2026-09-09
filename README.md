@@ -297,6 +297,33 @@ r3con research fuzz-hints ./parser.c --format afl
 r3con research fuzz-hints ./input.c --format libfuzzer
 ```
 
+### Analyse dynamique contrôlée
+
+L’analyse dynamique n’injecte plus de données par défaut. Si aucune entrée n’est fournie, r3con prépare un résultat `input_required` sans lancer la cible.
+
+```bash
+# Entrée explicite sur stdin
+r3con dynamic crash ./programme --input "test"
+
+# Argument explicite ou saisie interactive
+r3con dynamic crash ./programme --arg "test"
+r3con dynamic crash ./programme --prompt
+
+# Arrêter sur une fonction ou une adresse
+r3con dynamic crash ./programme --input "test" --breakpoint parse_input
+r3con dynamic crash ./programme --input "test" --address 0x401176 --stop-at-breakpoint
+
+# Chercher un offset avec un motif cyclique sur stdin
+r3con dynamic offset ./programme --length 300 --input-mode stdin
+
+# Placer le motif comme argument à une position précise, sans exécution
+r3con dynamic offset ./programme --length 300 --input-mode argument \
+  --arg before --arg after --pattern-arg-index 1 \
+  --breakpoint parse_input --plan
+```
+
+Par défaut, un breakpoint utilisé pour `crash` ou `offset` laisse l’exécution continuer afin d’observer le comportement. Utiliser `--stop-at-breakpoint` pour inspecter l’état exactement au point choisi. Ces fonctions doivent être utilisées uniquement dans un environnement de test isolé et sur des programmes autorisés.
+
 ### Sessions et rapports
 
 ```bash

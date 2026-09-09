@@ -166,6 +166,15 @@ def find_pattern_in_memory(dump: str, pattern_len: int = 500) -> int:
     return -1
 
 
+def build_cyclic_payload(length: int = 200, prefix_length: int = 0,
+                        suffix: bytes = b"") -> bytes:
+    """Build a local cyclic payload with an optional controlled prefix/suffix."""
+    length = max(1, min(int(length), 10000))
+    prefix_length = max(0, min(int(prefix_length), length))
+    pattern = generate_cyclic_pattern(length - prefix_length)
+    return (b"A" * prefix_length + pattern + suffix)[:10000]
+
+
 class DynamicAnalyzer:
     """Analyse dynamique GDB + pwndbg - FIXED VERSION."""
 
@@ -221,42 +230,98 @@ class DynamicAnalyzer:
             'sections': self._parse_sections(output),
         }
 
-    def analyze_crash(self, input_data: str, timeout: int = 15) -> Dict:
+    def _input_plan(self, input_data: Optional[str], args: Optional[List[str]]) -> Dict:
+        """Describe how input will be delivered without executing the target."""
+        return {
+            "input_mode": "stdin" if input_data is not None else "arguments" if args else "none",
+            "stdin_bytes": len(input_data.encode("utf-8", errors="replace")) if input_data is not None else 0,
+            "arguments": list(args or []),
+            "requires_input": input_data is None and not args,
+        }
+
+    @staticmethod
+    def _breakpoint_command(function_name: Optional[str] = None,
+                            address: Optional[str] = None,
+                            continue_after: bool = False) -> str:
+        if function_name:
+            if not re.match(r"^[a-zA-Z0-9_@.:$]+$", function_name):
+                raise ValueError("Invalid breakpoint function")
+            command = f"break {shlex.quote(function_name)}\n"
+        elif address:
+            if not re.match(r"^(0x)?[0-9a-fA-F]+$", address):
+                raise ValueError("Invalid breakpoint address")
+            normalized = address if address.lower().startswith("0x") else f"0x{address}"
+            command = f"break *{normalized}\n"
+        else:
+            return ""
+        if continue_after:
+            command += "commands\n silent\n continue\nend\n"
+        return command
+
+    def analyze_crash(self, input_data: Optional[str] = None, timeout: int = 15,
+                      args: Optional[List[str]] = None,
+                      breakpoint: Optional[str] = None,
+                      breakpoint_address: Optional[str] = None,
+                      stop_at_breakpoint: bool = False) -> Dict:
         if not self.available:
             return self._offline_result("analyze_crash")
         if not self._binary_path_validated:
-            return {'error': 'Binary validation failed', 'available': False}
-        
+            return {'error': 'Binary path validation failed', 'available': False}
+        args = list(args or [])
+        plan = self._input_plan(input_data, args)
+        if plan["requires_input"]:
+            return {
+                "status": "input_required",
+                "available": True,
+                "executed": False,
+                "message": "No input supplied. Choose --input for stdin or --arg for program arguments.",
+                **plan,
+            }
+
         # Safety: limit input size
-        if len(input_data) > 10000:
+        if input_data is not None and len(input_data) > 10000:
             input_data = input_data[:10000]
         
         heap_cmd = {'pwndbg': 'context\nheap\n', 'peda': 'context\n', 'gef': 'context\n'}.get(self.framework, '')
         
         # Use secure temp file for input
-        input_file = tempfile.NamedTemporaryFile(mode='w', suffix='.stdin', delete=False, encoding='utf-8')
-        os.chmod(input_file.name, 0o600)
-        input_file.write(input_data)
-        input_file.write('\n')
-        input_file.close()
+        input_file = None
+        if input_data is not None:
+            input_file = tempfile.NamedTemporaryFile(mode='w', suffix='.stdin', delete=False, encoding='utf-8')
+            os.chmod(input_file.name, 0o600)
+            input_file.write(input_data)
+            input_file.write('\n')
+            input_file.close()
         
         # FIX: disable ASLR for reproducible analysis
+        args_command = "set args " + " ".join(shlex.quote(arg) for arg in args) + "\n" if args else "set args\n"
+        breakpoint_command = self._breakpoint_command(
+            breakpoint, breakpoint_address, continue_after=not stop_at_breakpoint
+        )
+        run_command = "run"
+        if input_file:
+            run_command += f" < {shlex.quote(input_file.name)}"
         script = (
             f"set pagination off\nset disassembly-flavor intel\nset disable-randomization off\n"
             f"handle SIGSEGV stop\nhandle SIGABRT stop\nhandle SIGILL stop\n"
-            f"file {shlex.quote(self.binary)}\nrun < {shlex.quote(input_file.name)}\n"
+            f"file {shlex.quote(self.binary)}\nset breakpoint pending on\n{args_command}{breakpoint_command}{run_command}\n"
             f"{heap_cmd}\ninfo registers\nx/20gx $rsp\nx/20gx $rbp\nbacktrace 10\nquit\n"
         )
         try:
             output = _run_gdb(script, timeout=timeout)
         finally:
-            try:
-                os.unlink(input_file.name)
-            except OSError:
-                pass
+            if input_file:
+                try:
+                    os.unlink(input_file.name)
+                except OSError:
+                    pass
         
         result = {
-            'input_tested': input_data[:100],
+            'input_tested': input_data[:100] if input_data is not None else None,
+            **plan,
+            'breakpoint': breakpoint or breakpoint_address,
+            'stop_at_breakpoint': stop_at_breakpoint,
+            'executed': True,
             'raw_output': output,
             'crashed': False,
             'signal': None,
@@ -282,23 +347,55 @@ class DynamicAnalyzer:
             result['primitives'] = self._detect_primitives(output, result)
         return result
 
-    def find_bof_offset(self, max_length: int = 300) -> Dict:
-        if not self.available:
-            return self._offline_result("find_bof_offset")
+    def find_bof_offset(self, max_length: int = 300,
+                        prefix_length: int = 0,
+                        args: Optional[List[str]] = None,
+                        breakpoint: Optional[str] = None,
+                        breakpoint_address: Optional[str] = None,
+                        input_mode: str = "stdin",
+                        pattern_arg_index: Optional[int] = None,
+                        stop_at_breakpoint: bool = False,
+                        execute: bool = True) -> Dict:
         if not self._binary_path_validated:
             return {'error': 'Binary validation failed', 'available': False}
         
-        pattern = generate_cyclic_pattern(max_length).decode('latin-1', errors='ignore')
+        payload = build_cyclic_payload(max_length, prefix_length)
+        if input_mode not in {"stdin", "argument"}:
+            return {"status": "error", "error": "input_mode must be stdin or argument", "executed": False}
+        program_args = list(args or [])
+        if input_mode == "argument":
+            index = len(program_args) if pattern_arg_index is None else max(0, min(pattern_arg_index, len(program_args)))
+            program_args.insert(index, payload.decode("latin-1", errors="ignore"))
+        if not execute:
+            return {
+                "status": "planned",
+                "executed": False,
+                "pattern_length": max_length,
+                "prefix_length": prefix_length,
+                "payload_hex": payload.hex(),
+                "breakpoint": breakpoint or breakpoint_address,
+                "stop_at_breakpoint": stop_at_breakpoint,
+                "input_mode": input_mode,
+                "arguments": program_args,
+            }
+        if not self.available:
+            return self._offline_result("find_bof_offset")
+        pattern = payload.decode('latin-1', errors='ignore')
         # Escape pattern for shell - use file instead of <<<
         pattern_file = tempfile.NamedTemporaryFile(mode='w', suffix='.pattern', delete=False, encoding='latin-1')
         os.chmod(pattern_file.name, 0o600)
         pattern_file.write(pattern)
         pattern_file.close()
         
+        args_command = "set args " + " ".join(shlex.quote(arg) for arg in program_args) + "\n" if program_args else "set args\n"
+        breakpoint_command = self._breakpoint_command(
+            breakpoint, breakpoint_address, continue_after=not stop_at_breakpoint
+        )
+        run_input = f" < {shlex.quote(pattern_file.name)}" if input_mode == "stdin" else ""
         script = (
             f"set pagination off\nset disable-randomization off\nset disassembly-flavor intel\n"
             f"handle SIGSEGV stop\n"
-            f"file {shlex.quote(self.binary)}\nrun < {shlex.quote(pattern_file.name)}\n"
+            f"file {shlex.quote(self.binary)}\nset breakpoint pending on\n{args_command}{breakpoint_command}run{run_input}\n"
             f"info registers rip rsp rbp eip esp ebp\nx/50gx $rsp\nx/20gx $rbp\nbacktrace 5\nquit\n"
         )
         try:

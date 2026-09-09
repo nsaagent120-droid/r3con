@@ -26,9 +26,21 @@ def dynamic_function(binary_path, function_name):
 
 @dynamic_group.command("crash")
 @click.argument("binary_path", type=click.Path(exists=True, dir_okay=False))
-@click.option("--input", "input_data", default="A" * 128, show_default=False)
-def dynamic_crash(binary_path, input_data):
-    result = DynamicAnalyzer(binary_path).analyze_crash(input_data)
+@click.option("--input", "input_data", default=None, help="Texte envoyé sur stdin; rien n’est injecté par défaut")
+@click.option("--arg", "args", multiple=True, help="Argument du programme; répétable")
+@click.option("--prompt", is_flag=True, help="Demander l’entrée stdin dans le terminal avant le lancement")
+@click.option("--breakpoint", help="Fonction où arrêter avant l’exécution")
+@click.option("--address", "breakpoint_address", help="Adresse où arrêter, par exemple 0x401176")
+@click.option("--stop-at-breakpoint", is_flag=True, help="S’arrêter au breakpoint au lieu de continuer")
+@click.option("--timeout", default=15, type=click.IntRange(1, 300), show_default=True)
+def dynamic_crash(binary_path, input_data, args, prompt, breakpoint, breakpoint_address,
+                  stop_at_breakpoint, timeout):
+    if prompt and input_data is None:
+        input_data = click.prompt("Entrée stdin", default="", show_default=False)
+    result = DynamicAnalyzer(binary_path).analyze_crash(
+        input_data, timeout=timeout, args=list(args), breakpoint=breakpoint,
+        breakpoint_address=breakpoint_address, stop_at_breakpoint=stop_at_breakpoint,
+    )
     console.print_json(json.dumps(result, ensure_ascii=False))
 
 @dynamic_group.command("heap")
@@ -39,8 +51,23 @@ def dynamic_heap(binary_path):
 @dynamic_group.command("offset")
 @click.argument("binary_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--length", default=300, type=click.IntRange(32, 10000), show_default=True)
-def dynamic_offset(binary_path, length):
-    console.print_json(json.dumps(DynamicAnalyzer(binary_path).find_bof_offset(length), ensure_ascii=False))
+@click.option("--prefix-length", default=0, type=click.IntRange(0, 9999), show_default=True)
+@click.option("--arg", "args", multiple=True, help="Argument du programme; répétable")
+@click.option("--breakpoint", help="Fonction où arrêter avant l’entrée du motif")
+@click.option("--address", "breakpoint_address", help="Adresse où arrêter, par exemple 0x401176")
+@click.option("--stop-at-breakpoint", is_flag=True, help="S’arrêter au breakpoint au lieu de continuer")
+@click.option("--input-mode", type=click.Choice(["stdin", "argument"]), default="stdin", show_default=True)
+@click.option("--pattern-arg-index", type=click.IntRange(0, 100), help="Position de l’argument cyclique")
+@click.option("--plan", is_flag=True, help="Construire le payload sans lancer la cible")
+def dynamic_offset(binary_path, length, prefix_length, args, breakpoint, breakpoint_address,
+                   stop_at_breakpoint, input_mode, pattern_arg_index, plan):
+    result = DynamicAnalyzer(binary_path).find_bof_offset(
+        length, prefix_length=prefix_length, args=list(args), breakpoint=breakpoint,
+        breakpoint_address=breakpoint_address, input_mode=input_mode,
+        pattern_arg_index=pattern_arg_index, stop_at_breakpoint=stop_at_breakpoint,
+        execute=not plan,
+    )
+    console.print_json(json.dumps(result, ensure_ascii=False))
 
 @dynamic_group.command("rop")
 @click.argument("binary_path", type=click.Path(exists=True, dir_okay=False))

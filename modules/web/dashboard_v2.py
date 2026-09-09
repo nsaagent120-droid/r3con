@@ -5,6 +5,8 @@ Real-time updates via Flask-SocketIO with polling fallback
 from __future__ import annotations
 from flask import Flask, render_template_string, jsonify, request
 import json
+import os
+import secrets
 from datetime import datetime
 from pathlib import Path
 import threading
@@ -20,11 +22,18 @@ except ImportError:
 
 app = Flask(__name__)
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False
-app.config['SECRET_KEY'] = 'r3con-v7.2-secret-key'
+# Use an operator-provided stable key for multi-process deployments, otherwise
+# generate an unpredictable key for this local process.
+app.config['SECRET_KEY'] = os.environ.get('R3CON_DASHBOARD_SECRET') or secrets.token_hex(32)
 
 socketio = None
 if SOCKETIO_AVAILABLE:
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+    cors_origins = os.environ.get("R3CON_DASHBOARD_CORS_ORIGINS", "").strip()
+    socketio = SocketIO(
+        app,
+        cors_allowed_origins=[origin.strip() for origin in cors_origins.split(",") if origin.strip()] or None,
+        async_mode='threading',
+    )
 
 # In-memory real-time data
 realtime_logs = deque(maxlen=100)
@@ -788,7 +797,9 @@ if __name__ == '__main__':
     print("⚡ r3con v7.2 PRO Dashboard Real-time")
     print("http://127.0.0.1:5000")
     print(f"WebSocket: {'Available (Flask-SocketIO)' if SOCKETIO_AVAILABLE else 'Fallback polling (install flask-socketio)'}")
+    bind_host = os.environ.get("R3CON_DASHBOARD_HOST", "127.0.0.1")
+    bind_port = int(os.environ.get("R3CON_DASHBOARD_PORT", "5000"))
     if SOCKETIO_AVAILABLE and sio:
-        sio.run(application, debug=False, host='0.0.0.0', port=5000, use_reloader=False)
+        sio.run(application, debug=False, host=bind_host, port=bind_port, use_reloader=False)
     else:
-        application.run(debug=False, host='0.0.0.0', port=5000, use_reloader=False)
+        application.run(debug=False, host=bind_host, port=bind_port, use_reloader=False)

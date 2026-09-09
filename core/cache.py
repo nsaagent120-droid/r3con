@@ -14,7 +14,7 @@ from typing import Dict, Optional
 
 CACHE_DIR = Path.home() / ".r3con" / "cache"
 CACHE_FILE = CACHE_DIR / "analysis_cache.json"
-CACHE_VERSION = "5.0.2-fixed-p2"
+CACHE_VERSION = "7.2.0"
 CACHE_SCHEMA = 2
 MAX_ENTRIES = 5000
 DEFAULT_TTL_DAYS = 7
