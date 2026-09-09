@@ -1,5 +1,6 @@
 from click.testing import CliRunner
 import cli.main as main
+import cli.groups.disasm as disasm_group
 
 
 class FakeParser:
@@ -14,8 +15,10 @@ class FakeParser:
 
 
 def test_fgets_is_not_gets():
-    original = main.BinaryParser
+    original_main = main.BinaryParser
+    original_group = disasm_group.BinaryParser
     main.BinaryParser = FakeParser
+    disasm_group.BinaryParser = FakeParser
     try:
         with CliRunner().isolated_filesystem():
             with open("dummy.elf", "wb") as fh:
@@ -25,7 +28,8 @@ def test_fgets_is_not_gets():
                 ["--no-banner", "disasm", "imports", "dummy.elf", "--vuln-check"],
             )
     finally:
-        main.BinaryParser = original
+        main.BinaryParser = original_main
+        disasm_group.BinaryParser = original_group
     if result.exit_code != 0:
         raise AssertionError(f"exit={result.exit_code} output={result.output!r} exception={result.exception!r}")
     fgets_line = next(line for line in result.output.splitlines() if "fgets" in line)
