@@ -23,12 +23,12 @@ test-cov: ## Run tests with coverage
 	$(PY) -m pytest tests/ --cov=core --cov=modules --cov-report=term-missing --ignore=tests/test_cli_theme.py
 
 lint: ## Lint with ruff + pyflakes + bandit
-	ruff check core cli modules layers || true
-	pyflakes core cli layers modules || true
-	bandit -r core cli layers modules -lll -q || true
+	ruff check core cli modules || true
+	pyflakes core cli modules || true
+	bandit -r core cli modules -lll -q || true
 
 format: ## Format with black
-	black core cli modules layers tests --line-length 100
+	black core cli modules tests --line-length 100
 
 clean: ## Clean build artifacts
 	rm -rf build/ dist/ *.egg-info/ .pytest_cache/ .ruff_cache/ .mypy_cache/

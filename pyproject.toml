@@ -130,7 +130,7 @@ Security = "https://github.com/nsaagent120-droid/r3con/blob/master/SECURITY_AUDI
 r3con = "cli.main:main"
 
 [tool.setuptools.packages.find]
-include = ["cli*", "core*", "layers*", "modules*", "plugins*"]
+include = ["cli*", "core*", "modules*", "plugins*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml", "*.yml", "*.json", "*.txt", "*.md"]
@@ -152,7 +152,7 @@ select = ["E", "W", "F", "I", "B", "C4", "UP"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["cli", "core", "layers", "modules"]
+known-first-party = ["cli", "core", "modules"]
 
 [tool.mypy]
 python_version = "3.9"
@@ -183,4 +183,5 @@ exclude_lines = [
 
 [tool.bandit]
 exclude_dirs = ["tests", "build", "dist"]
-skips = ["B101", "B601"]
+# B324 est utilisé pour des fingerprints, UUID/SARIF et JA3, jamais pour protéger un secret.
+skips = ["B101", "B324", "B601"]
