@@ -519,16 +519,293 @@ def create_binary_pipeline_pro(config: ConfigManager, target_path: str) -> Pipel
     return pipeline
 
 
+def create_malware_pipeline(config: ConfigManager, target_path: str) -> Pipeline:
+    """Pipeline malware PRO v6.2 - PE/ELF + behavior + classifier + unpacker + extractor + anti-analysis."""
+    pipeline = Pipeline(config=config)
+
+    def task_pe_analyze(ctx, prev):
+        try:
+            from modules.malware.pe_analyzer import PEAnalyzer
+            analyzer = PEAnalyzer(ctx["target_path"])
+            result = analyzer.analyze()
+            return make_result(Status.OK, engine="pe_analyzer", observations=result, count=len(result.get("findings", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="pe_analyzer", error=str(e)[:500])
+
+    def task_elf_analyze(ctx, prev):
+        try:
+            from modules.malware.elf_analyzer import ELFAnalyzer
+            analyzer = ELFAnalyzer(ctx["target_path"])
+            result = analyzer.analyze()
+            return make_result(Status.OK, engine="elf_analyzer", observations=result, count=len(result.get("findings", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="elf_analyzer", error=str(e)[:500])
+
+    def task_behavior(ctx, prev):
+        try:
+            from modules.malware.behavior_analyzer import BehaviorAnalyzer
+            analyzer = BehaviorAnalyzer()
+            result = analyzer.analyze_file(ctx["target_path"])
+            return make_result(Status.OK, engine="behavior_analyzer", observations=result, count=len(result.get("findings", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="behavior_analyzer", error=str(e)[:500])
+
+    def task_unpacker(ctx, prev):
+        try:
+            from modules.malware.unpacker import Unpacker
+            analyzer = Unpacker(ctx["target_path"])
+            result = analyzer.analyze()
+            return make_result(Status.OK, engine="unpacker", observations=result, count=len(result.get("findings", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="unpacker", error=str(e)[:500])
+
+    def task_anti_analysis(ctx, prev):
+        try:
+            from modules.malware.anti_analysis import AntiAnalysisDetector
+            analyzer = AntiAnalysisDetector()
+            result = analyzer.analyze_file(ctx["target_path"])
+            return make_result(Status.OK, engine="anti_analysis", observations=result, count=len(result.get("findings", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="anti_analysis", error=str(e)[:500])
+
+    def task_extractor(ctx, prev):
+        try:
+            from modules.malware.extractor import MalwareExtractor
+            analyzer = MalwareExtractor()
+            result = analyzer.analyze_file(ctx["target_path"])
+            return make_result(Status.OK, engine="malware_extractor", observations=result, count=result.get("ioc_count", 0))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="malware_extractor", error=str(e)[:500])
+
+    def task_classifier(ctx, prev):
+        try:
+            from modules.malware.malware_classifier import MalwareClassifier
+            analyzer = MalwareClassifier()
+            result = analyzer.analyze_file(ctx["target_path"])
+            return make_result(Status.OK, engine="malware_classifier", observations=result, count=len(result.get("findings", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="malware_classifier", error=str(e)[:500])
+
+    def task_malware_tools(ctx, prev):
+        try:
+            from modules.integration.malware_tools import MalwareToolsManager
+            mgr = MalwareToolsManager(ctx["target_path"])
+            result = mgr.analyze_all()
+            return make_result(Status.OK, engine="malware_tools", observations=result)
+        except Exception as e:
+            return make_result(Status.ERROR, engine="malware_tools", error=str(e)[:500])
+
+    def task_malware_summary(ctx, prev):
+        try:
+            all_findings = []
+            scores = []
+            for res in prev.values():
+                if not res or not isinstance(res, dict):
+                    continue
+                obs = res.get("observations", {})
+                if isinstance(obs, dict):
+                    findings = obs.get("findings", [])
+                    if isinstance(findings, list):
+                        all_findings.extend(findings)
+                    # Collect scores
+                    for score_key in ["malicious_score", "overall_score", "anti_analysis_score"]:
+                        if score_key in obs and isinstance(obs[score_key], (int, float)):
+                            scores.append(obs[score_key])
+
+            avg_score = sum(scores) // len(scores) if scores else 0
+            if avg_score >= 70:
+                verdict = "MALICIOUS"
+            elif avg_score >= 40:
+                verdict = "SUSPICIOUS"
+            elif avg_score >= 15:
+                verdict = "POTENTIALLY_UNWANTED"
+            else:
+                verdict = "CLEAN"
+
+            # Primary family from classifier
+            classifier_res = prev.get("classifier", {}).get("observations", {})
+            primary_family = classifier_res.get("primary_family")
+
+            return make_result(Status.OK, engine="malware_summary", observations={
+                "verdict": verdict,
+                "score": avg_score,
+                "primary_family": primary_family,
+                "total_findings": len(all_findings),
+                "findings": all_findings[:100],
+            }, count=len(all_findings))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="malware_summary", error=str(e)[:500])
+
+    pipeline.add_tasks([
+        Task("pe_analyze", task_pe_analyze, [], TaskPriority.CRITICAL, True, 60, False, "malware"),
+        Task("elf_analyze", task_elf_analyze, [], TaskPriority.CRITICAL, True, 60, False, "malware"),
+        Task("behavior", task_behavior, ["pe_analyze", "elf_analyze"], TaskPriority.HIGH, True, 60, False, "malware"),
+        Task("unpacker", task_unpacker, ["pe_analyze", "elf_analyze"], TaskPriority.HIGH, True, 60, False, "malware"),
+        Task("anti_analysis", task_anti_analysis, ["pe_analyze"], TaskPriority.MEDIUM, True, 60, False, "malware"),
+        Task("extractor", task_extractor, ["pe_analyze", "elf_analyze"], TaskPriority.HIGH, True, 60, False, "malware"),
+        Task("classifier", task_classifier, ["behavior", "extractor"], TaskPriority.HIGH, True, 60, False, "malware"),
+        Task("malware_tools", task_malware_tools, ["pe_analyze"], TaskPriority.LOW, True, 120, False, "malware"),
+        Task("malware_summary", task_malware_summary, ["behavior", "unpacker", "anti_analysis", "extractor", "classifier", "malware_tools"], TaskPriority.LOW, True, 30, False, "reporting"),
+    ])
+
+    return pipeline
+
+
+def create_network_pipeline(config: ConfigManager, target_path: str) -> Pipeline:
+    """Pipeline network PRO v6.2 - protocol + threat + flow + DNS + TLS + HTTP + external tools."""
+    pipeline = Pipeline(config=config)
+
+    def task_protocol(ctx, prev):
+        try:
+            from modules.network.protocol_analyzer import ProtocolAnalyzer
+            analyzer = ProtocolAnalyzer(ctx["target_path"])
+            result = analyzer.analyze()
+            if result.get("status") == "error":
+                return make_result(Status.ERROR, engine="protocol_analyzer", error=result.get("error", "unknown"))
+            return make_result(Status.OK, engine="protocol_analyzer", observations=result, count=len(result.get("findings", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="protocol_analyzer", error=str(e)[:500])
+
+    def task_threat(ctx, prev):
+        try:
+            from modules.network.threat_detector import ThreatDetector
+            proto_res = prev.get("protocol", {}).get("observations", {})
+            analyzer = ThreatDetector()
+            result = analyzer.analyze_pcap_summary(proto_res)
+            ioc_result = analyzer.analyze_iocs(proto_res.get("iocs", {}))
+            # Merge
+            combined_findings = result.get("findings", []) + ioc_result.get("findings", [])
+            result["findings"] = combined_findings
+            result["threat_count"] = len(combined_findings)
+            return make_result(Status.OK, engine="threat_detector", observations=result, count=len(combined_findings))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="threat_detector", error=str(e)[:500])
+
+    def task_flow(ctx, prev):
+        try:
+            from modules.network.flow_analyzer import FlowAnalyzer
+            proto_res = prev.get("protocol", {}).get("observations", {})
+            flows = proto_res.get("flows", [])
+            analyzer = FlowAnalyzer()
+            result = analyzer.analyze_flows(flows)
+            c2 = analyzer.detect_c2_channels(flows)
+            result["c2_channels"] = c2
+            return make_result(Status.OK, engine="flow_analyzer", observations=result, count=len(result.get("findings", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="flow_analyzer", error=str(e)[:500])
+
+    def task_dns(ctx, prev):
+        try:
+            from modules.network.dns_analyzer import DNSAnalyzer
+            proto_res = prev.get("protocol", {}).get("observations", {})
+            analyzer = DNSAnalyzer()
+            result = analyzer.analyze_pcap_dns(proto_res)
+            return make_result(Status.OK, engine="dns_analyzer", observations=result, count=len(result.get("findings", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="dns_analyzer", error=str(e)[:500])
+
+    def task_tls(ctx, prev):
+        try:
+            from modules.network.tls_analyzer import TLSAnalyzer
+            proto_res = prev.get("protocol", {}).get("observations", {})
+            analyzer = TLSAnalyzer()
+            result = analyzer.analyze_pcap(proto_res)
+            return make_result(Status.OK, engine="tls_analyzer", observations=result, count=len(result.get("findings", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="tls_analyzer", error=str(e)[:500])
+
+    def task_http(ctx, prev):
+        try:
+            from modules.network.http_analyzer import HTTPAnalyzer
+            proto_res = prev.get("protocol", {}).get("observations", {})
+            analyzer = HTTPAnalyzer()
+            result = analyzer.analyze_pcap_http(proto_res)
+            return make_result(Status.OK, engine="http_analyzer", observations=result, count=len(result.get("findings", [])))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="http_analyzer", error=str(e)[:500])
+
+    def task_network_tools(ctx, prev):
+        try:
+            from modules.integration.network_tools import NetworkToolsManager
+            mgr = NetworkToolsManager(ctx["target_path"])
+            result = mgr.analyze_all()
+            return make_result(Status.OK, engine="network_tools", observations=result)
+        except Exception as e:
+            return make_result(Status.ERROR, engine="network_tools", error=str(e)[:500])
+
+    def task_network_summary(ctx, prev):
+        try:
+            all_findings = []
+            for res in prev.values():
+                if not res or not isinstance(res, dict):
+                    continue
+                obs = res.get("observations", {})
+                if isinstance(obs, dict):
+                    findings = obs.get("findings", [])
+                    if isinstance(findings, list):
+                        all_findings.extend(findings)
+
+            proto_res = prev.get("protocol", {}).get("observations", {})
+            summary = {
+                "total_flows": len(proto_res.get("flows", [])),
+                "total_findings": len(all_findings),
+                "protocols": proto_res.get("protocols", {}),
+                "ioc_count": sum(len(v) for v in proto_res.get("iocs", {}).values()) if isinstance(proto_res.get("iocs"), dict) else 0,
+                "findings": all_findings[:100],
+            }
+
+            return make_result(Status.OK, engine="network_summary", observations=summary, count=len(all_findings))
+        except Exception as e:
+            return make_result(Status.ERROR, engine="network_summary", error=str(e)[:500])
+
+    pipeline.add_tasks([
+        Task("protocol", task_protocol, [], TaskPriority.CRITICAL, True, 120, True, "network"),
+        Task("threat", task_threat, ["protocol"], TaskPriority.HIGH, True, 60, False, "network"),
+        Task("flow", task_flow, ["protocol"], TaskPriority.HIGH, True, 60, False, "network"),
+        Task("dns", task_dns, ["protocol"], TaskPriority.MEDIUM, True, 60, False, "network"),
+        Task("tls", task_tls, ["protocol"], TaskPriority.MEDIUM, True, 60, False, "network"),
+        Task("http", task_http, ["protocol"], TaskPriority.MEDIUM, True, 60, False, "network"),
+        Task("network_tools", task_network_tools, ["protocol"], TaskPriority.LOW, True, 180, False, "network"),
+        Task("network_summary", task_network_summary, ["threat", "flow", "dns", "tls", "http", "network_tools"], TaskPriority.LOW, True, 30, False, "reporting"),
+    ])
+
+    return pipeline
+
+
 def create_unified_pipeline(config: ConfigManager, target_path: str, profile: str, target_kind: str) -> Pipeline:
-    """Crée le pipeline unifié basé sur le type de cible et le profil - v6.1 PRO."""
+    """Crée le pipeline unifié basé sur le type de cible et le profil - v6.2 PRO."""
 
     if target_kind == "binary":
-        # Use PRO pipeline if profile demands
-        if profile in ("full", "deep", "pro", "bounty"):
+        if profile in ("full", "deep", "pro", "bounty", "malware"):
             return create_binary_pipeline_pro(config, target_path)
         return create_binary_pipeline(config, target_path)
     elif target_kind == "firmware":
         return create_firmware_pipeline(config, target_path)
+    elif target_kind == "malware":
+        return create_malware_pipeline(config, target_path)
+    elif target_kind == "network" or target_kind == "pcap":
+        return create_network_pipeline(config, target_path)
+    elif target_kind == "auto":
+        # Auto-detect
+        from pathlib import Path
+        p = Path(target_path)
+        if p.is_file():
+            # Check extension
+            if p.suffix.lower() in (".pcap", ".pcapng", ".cap"):
+                return create_network_pipeline(config, target_path)
+            # Check magic
+            try:
+                magic = p.read_bytes()[:4]
+                if magic == b"\xd4\xc3\xb2\xa1" or magic == b"\xa1\xb2\xc3\xd4" or magic[:4] == b"\x0a\x0d\x0d\x0a":
+                    return create_network_pipeline(config, target_path)
+                if magic[:2] == b"MZ" or magic == b"\x7fELF":
+                    # Could be malware
+                    if profile == "malware":
+                        return create_malware_pipeline(config, target_path)
+                    return create_binary_pipeline_pro(config, target_path)
+            except Exception:
+                pass
+        return create_binary_pipeline(config, target_path)
     else:
         pipeline = Pipeline(config=config)
 

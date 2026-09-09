@@ -95,6 +95,7 @@ from cli.groups.research import research
 from cli.groups.network import network
 from cli.groups.tools import tools
 from cli.groups.dynamic import dynamic_group
+from cli.groups.malware import malware
 from cli.groups.analyze import (
     analyze_command, analyze_pro_command,
     benchmark_command, correlate_command, diff_command
@@ -144,6 +145,7 @@ cli.add_command(apk)
 cli.add_command(firmware)
 cli.add_command(research)
 cli.add_command(network)
+cli.add_command(malware)
 cli.add_command(tools)
 cli.add_command(dynamic_group)
 cli.add_command(config)

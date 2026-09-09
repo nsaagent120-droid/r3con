@@ -1,13 +1,10 @@
 """
-r3con v6.1 - Web Dashboard PRO renforcé
-Dashboard temps réel + knowledge graph visuel + gestion workspaces + API complète
+r3con v6.2 - Web Dashboard PRO - Malware + Network domains
+Dashboard temps réel + knowledge graph + malware + network + workspaces + API complète
 """
 from __future__ import annotations
 from flask import Flask, render_template_string, jsonify, request
-import html
-import re
 import json
-from pathlib import Path
 from datetime import datetime
 
 app = Flask(__name__)
@@ -19,128 +16,148 @@ DASHBOARD_HTML = """
 <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline';">
-    <title>r3con v6.1 — PRO Dashboard</title>
+    <title>r3con v6.2 — PRO Dashboard - Malware + Network</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body { font-family:'Courier New',monospace; background: linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 100%); color:#e2e8f0; padding:20px; min-height:100vh; }
-        .container { max-width:1600px; margin:0 auto; }
+        .container { max-width:1700px; margin:0 auto; }
         .header { text-align:center; margin-bottom:30px; border-bottom:2px solid #22d3ee; padding-bottom:20px; }
-        .header h1 { color:#22d3ee; font-size:2.5em; margin-bottom:8px; }
-        .header .subtitle { color:#64748b; font-size:0.9em; }
-        .header .version { color:#f59e0b; font-size:0.8em; margin-top:6px; }
-        .tabs { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
-        .tab-btn { background:#1e293b; border:1px solid #334155; color:#94a3b8; padding:10px 20px; border-radius:6px; cursor:pointer; font-family:inherit; }
+        .header h1 { color:#22d3ee; font-size:2.6em; margin-bottom:8px; }
+        .header .subtitle { color:#94a3b8; font-size:0.95em; }
+        .header .version { color:#f59e0b; font-size:0.85em; margin-top:6px; }
+        .tabs { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+        .tab-btn { background:#1e293b; border:1px solid #334155; color:#94a3b8; padding:8px 16px; border-radius:6px; cursor:pointer; font-family:inherit; font-size:0.85em; }
         .tab-btn.active { background:#22d3ee; color:#0f0f1a; border-color:#22d3ee; font-weight:bold; }
         .tab-content { display:none; }
         .tab-content.active { display:block; }
-        .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:20px; margin-bottom:30px; }
-        .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:30px; }
-        .card { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:20px; box-shadow:0 4px 6px rgba(0,0,0,0.3); }
-        .card h2 { color:#7dd3fc; font-size:1.15em; margin-bottom:15px; border-bottom:1px solid #475569; padding-bottom:10px; }
-        .card h3 { color:#22d3ee; font-size:1em; margin-bottom:10px; }
-        .stat-row { display:flex; justify-content:space-between; margin-bottom:8px; padding:8px 0; border-bottom:1px solid #334155; }
+        .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; margin-bottom:25px; }
+        .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:25px; }
+        .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; margin-bottom:25px; }
+        .card { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:18px; box-shadow:0 4px 6px rgba(0,0,0,0.3); }
+        .card h2 { color:#7dd3fc; font-size:1.1em; margin-bottom:12px; border-bottom:1px solid #475569; padding-bottom:8px; }
+        .card h3 { color:#22d3ee; font-size:0.95em; margin-bottom:8px; }
+        .stat-row { display:flex; justify-content:space-between; margin-bottom:6px; padding:6px 0; border-bottom:1px solid #334155; font-size:0.9em; }
         .stat-label { color:#94a3b8; }
         .stat-value { color:#22d3ee; font-weight:bold; }
         .sev-critical { color:#dc2626; } .sev-high { color:#ea580c; } .sev-medium { color:#ca8a04; } .sev-low { color:#16a34a; } .sev-info { color:#64748b; }
         .findings-list { max-height:500px; overflow-y:auto; }
-        .finding-item { background:#0f172a; padding:12px; margin-bottom:10px; border-left:4px solid #475569; border-radius:4px; }
+        .finding-item { background:#0f172a; padding:10px; margin-bottom:8px; border-left:4px solid #475569; border-radius:4px; font-size:0.85em; }
         .finding-item.critical { border-left-color:#dc2626; } .finding-item.high { border-left-color:#ea580c; } .finding-item.medium { border-left-color:#ca8a04; } .finding-item.low { border-left-color:#16a34a; }
         .finding-type { color:#e2e8f0; font-weight:bold; font-size:0.9em; }
-        .finding-desc { color:#94a3b8; font-size:0.85em; margin-top:5px; }
-        .chain-box { background:#1a1a2e; border:2px solid #22d3ee; border-radius:6px; padding:15px; margin-bottom:15px; }
+        .finding-desc { color:#94a3b8; font-size:0.85em; margin-top:4px; }
+        .chain-box { background:#1a1a2e; border:2px solid #22d3ee; border-radius:6px; padding:12px; margin-bottom:12px; }
         .chain-name { color:#22d3ee; font-weight:bold; }
-        .chain-impact { color:#fbbf24; margin-top:5px; }
-        .chain-steps { color:#94a3b8; font-size:0.9em; margin-top:8px; }
-        .taint-flow { background:#0f172a; border-left:3px solid #f59e0b; padding:12px; margin-bottom:10px; border-radius:4px; }
-        .taint-source { color:#f59e0b; font-weight:bold; } .taint-sink { color:#ec4899; font-weight:bold; }
-        .section-title { color:#22d3ee; font-size:1.4em; margin-top:30px; margin-bottom:15px; border-bottom:2px solid #22d3ee; padding-bottom:8px; }
-        .footer { text-align:center; color:#64748b; margin-top:60px; padding-top:20px; border-top:1px solid #334155; font-size:0.85em; }
-        .badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:0.75em; font-weight:bold; }
-        .badge-ok { background:#16a34a; color:#fff; } .badge-warn { background:#ca8a04; color:#fff; } .badge-crit { background:#dc2626; color:#fff; }
-        .knowledge-node { background:#0f172a; border:1px solid #334155; padding:10px; margin-bottom:8px; border-radius:4px; }
-        .knowledge-node .node-type { color:#22d3ee; font-size:0.8em; }
-        .graph-viz { width:100%; height:400px; background:#0f172a; border-radius:8px; border:1px solid #334155; display:flex; align-items:center; justify-content:center; color:#64748b; }
-        .progress-bar { width:100%; height:8px; background:#334155; border-radius:4px; overflow:hidden; margin-top:5px; }
+        .chain-impact { color:#fbbf24; margin-top:4px; font-size:0.9em; }
+        .section-title { color:#22d3ee; font-size:1.3em; margin-top:25px; margin-bottom:12px; border-bottom:2px solid #22d3ee; padding-bottom:6px; }
+        .footer { text-align:center; color:#64748b; margin-top:50px; padding-top:15px; border-top:1px solid #334155; font-size:0.8em; }
+        .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:0.7em; font-weight:bold; }
+        .badge-ok { background:#16a34a; color:#fff; } .badge-warn { background:#ca8a04; color:#fff; } .badge-crit { background:#dc2626; color:#fff; } .badge-info { background:#334155; color:#94a3b8; }
+        .knowledge-node { background:#0f172a; border:1px solid #334155; padding:8px; margin-bottom:6px; border-radius:4px; font-size:0.85em; }
+        .graph-viz { width:100%; height:300px; background:#0f172a; border-radius:8px; border:1px solid #334155; display:flex; align-items:center; justify-content:center; color:#64748b; }
+        .progress-bar { width:100%; height:6px; background:#334155; border-radius:4px; overflow:hidden; margin-top:4px; }
         .progress-fill { height:100%; background:linear-gradient(90deg,#22d3ee,#7dd3fc); transition:width 0.3s; }
-        .search-box { width:100%; padding:10px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:#e2e8f0; font-family:inherit; margin-bottom:15px; }
-        .btn { background:#22d3ee; color:#0f0f1a; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; font-family:inherit; font-weight:bold; }
+        .search-box { width:100%; padding:8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:#e2e8f0; font-family:inherit; margin-bottom:12px; font-size:0.9em; }
+        .btn { background:#22d3ee; color:#0f0f1a; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-family:inherit; font-weight:bold; font-size:0.85em; }
         .btn:hover { background:#7dd3fc; }
-        .workspace-item { background:#0f172a; padding:12px; margin-bottom:8px; border-radius:6px; border:1px solid #334155; cursor:pointer; }
+        .workspace-item { background:#0f172a; padding:10px; margin-bottom:6px; border-radius:6px; border:1px solid #334155; cursor:pointer; font-size:0.85em; }
         .workspace-item:hover { border-color:#22d3ee; }
         table { width:100%; border-collapse:collapse; }
-        th { text-align:left; color:#7dd3fc; padding:8px; border-bottom:1px solid #334155; font-size:0.85em; }
-        td { padding:8px; border-bottom:1px solid #1e293b; font-size:0.85em; color:#94a3b8; }
+        th { text-align:left; color:#7dd3fc; padding:6px; border-bottom:1px solid #334155; font-size:0.8em; }
+        td { padding:6px; border-bottom:1px solid #1e293b; font-size:0.8em; color:#94a3b8; }
+        .malware-family { background:#1a0f1a; border:1px solid #ec4899; padding:10px; margin-bottom:8px; border-radius:6px; }
+        .malware-family .family-name { color:#ec4899; font-weight:bold; }
+        .network-flow { background:#0f1a1a; border:1px solid #22d3ee; padding:8px; margin-bottom:6px; border-radius:4px; font-size:0.8em; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>⚡ r3con v6.1 PRO Dashboard</h1>
-            <p class="subtitle">Advanced Vulnerability Analysis • Knowledge Graph • Bug Bounty Reporting</p>
-            <p class="version">v6.1 PRO | Hybrid Workspaces | Federation | YARA + CVE + IoC + CallGraph</p>
-            <p style="color:#f59e0b;font-size:0.75em;margin-top:8px">⚠ Local use only — no auth — do not expose to internet</p>
+            <h1>⚡ r3con v6.2 PRO Dashboard</h1>
+            <p class="subtitle">Binary • Malware • Network • Firmware • Knowledge Graph • Bug Bounty</p>
+            <p class="version">v6.2 PRO | Malware: PE/ELF/Behavior/Classifier/Unpacker | Network: Threat/Flow/DNS/TLS/HTTP | External Tools: pefile/DIE/capa/YARA/tshark/suricata/zeek/nmap</p>
+            <p style="color:#f59e0b;font-size:0.7em;margin-top:6px">⚠ Local use only — no auth — do not expose to internet</p>
         </div>
 
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('overview')">📊 Overview</button>
             <button class="tab-btn" onclick="switchTab('findings')">🐛 Findings</button>
+            <button class="tab-btn" onclick="switchTab('malware')">🦠 Malware</button>
+            <button class="tab-btn" onclick="switchTab('network')">🌐 Network</button>
             <button class="tab-btn" onclick="switchTab('chains')">🔗 Chains</button>
             <button class="tab-btn" onclick="switchTab('knowledge')">🧠 Knowledge</button>
             <button class="tab-btn" onclick="switchTab('workspaces')">📁 Workspaces</button>
             <button class="tab-btn" onclick="switchTab('yara')">🎯 YARA</button>
-            <button class="tab-btn" onclick="switchTab('deps')">📦 Deps & SBOM</button>
+            <button class="tab-btn" onclick="switchTab('deps')">📦 Deps</button>
+            <button class="tab-btn" onclick="switchTab('tools')">🛠️ Tools</button>
             <button class="tab-btn" onclick="switchTab('reports')">📄 Reports</button>
         </div>
 
         <!-- Overview Tab -->
         <div id="tab-overview" class="tab-content active">
-            <div class="grid">
-                <div class="card">
-                    <h2>📊 Analysis Overview</h2>
-                    <div id="overview-content">Loading...</div>
-                </div>
-                <div class="card">
-                    <h2>🎯 Severity Breakdown</h2>
-                    <div id="severity-content">Loading...</div>
-                </div>
-                <div class="card">
-                    <h2>⚙️ Statistics</h2>
-                    <div id="stats-content">Loading...</div>
-                </div>
+            <div class="grid-3">
+                <div class="card"><h2>📊 Analysis Overview</h2><div id="overview-content">Loading...</div></div>
+                <div class="card"><h2>🎯 Severity Breakdown</h2><div id="severity-content">Loading...</div></div>
+                <div class="card"><h2>⚙️ Statistics</h2><div id="stats-content">Loading...</div></div>
             </div>
             <div class="grid-2">
-                <div class="card">
-                    <h2>📈 Risk Score</h2>
-                    <div id="risk-content">Loading...</div>
-                </div>
-                <div class="card">
-                    <h2>🔍 Quick Search</h2>
-                    <input class="search-box" id="quick-search" placeholder="Search findings, CVEs, IoCs..." onkeyup="doSearch(this.value)">
-                    <div id="search-results" style="max-height:300px;overflow-y:auto"></div>
-                </div>
+                <div class="card"><h2>📈 Risk Score</h2><div id="risk-content">Loading...</div></div>
+                <div class="card"><h2>🔍 Quick Search</h2><input class="search-box" id="quick-search" placeholder="Search findings, CVEs, IoCs, malware families..." onkeyup="doSearch(this.value)"><div id="search-results" style="max-height:250px;overflow-y:auto"></div></div>
             </div>
-            <div class="section-title">💧 Taint Flows</div>
-            <div class="card"><div id="taint-flows" style="max-height:400px;overflow-y:auto">Loading...</div></div>
+            <div class="grid-2">
+                <div class="card"><h2>🦠 Malware Summary</h2><div id="malware-summary">Loading...</div></div>
+                <div class="card"><h2>🌐 Network Summary</h2><div id="network-summary">Loading...</div></div>
+            </div>
         </div>
 
         <!-- Findings Tab -->
         <div id="tab-findings" class="tab-content">
             <div class="card">
                 <h2>🐛 Detailed Findings <span id="findings-count" style="color:#64748b;font-weight:normal"></span></h2>
-                <div style="display:flex;gap:10px;margin-bottom:15px">
+                <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
                     <button class="btn" onclick="filterFindings('ALL')">All</button>
-                    <button class="btn" onclick="filterFindings('CRITICAL')" style="background:#dc2626;color:#fff">Critical</button>
-                    <button class="btn" onclick="filterFindings('HIGH')" style="background:#ea580c;color:#fff">High</button>
-                    <button class="btn" onclick="filterFindings('MEDIUM')" style="background:#ca8a04;color:#fff">Medium</button>
+                    <button class="btn" style="background:#dc2626;color:#fff" onclick="filterFindings('CRITICAL')">Critical</button>
+                    <button class="btn" style="background:#ea580c;color:#fff" onclick="filterFindings('HIGH')">High</button>
+                    <button class="btn" style="background:#ca8a04;color:#fff" onclick="filterFindings('MEDIUM')">Medium</button>
+                    <button class="btn" style="background:#16a34a;color:#fff" onclick="filterFindings('LOW')">Low</button>
                 </div>
                 <div class="findings-list" id="findings-list">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Malware Tab -->
+        <div id="tab-malware" class="tab-content">
+            <div class="grid-2">
+                <div class="card"><h2>🦠 Malware Analysis</h2><div id="malware-analysis">Loading...</div></div>
+                <div class="card"><h2>🏷️ Malware Classification</h2><div id="malware-classification">Loading...</div></div>
+            </div>
+            <div class="grid-2">
+                <div class="card"><h2>📦 Packer & Entropy</h2><div id="malware-packer">Loading...</div></div>
+                <div class="card"><h2>🛡️ Anti-Analysis</h2><div id="malware-anti">Loading...</div></div>
+            </div>
+            <div class="card"><h2>🔍 IoC Extractor</h2><div id="malware-iocs">Loading...</div></div>
+            <div class="card"><h2>🧬 Behavior Analysis</h2><div id="malware-behavior">Loading...</div></div>
+        </div>
+
+        <!-- Network Tab -->
+        <div id="tab-network" class="tab-content">
+            <div class="grid-2">
+                <div class="card"><h2>🌐 Protocol Analysis</h2><div id="network-protocol">Loading...</div></div>
+                <div class="card"><h2>🚨 Threat Detection</h2><div id="network-threat">Loading...</div></div>
+            </div>
+            <div class="grid-2">
+                <div class="card"><h2>📊 Flow Analysis</h2><div id="network-flow">Loading...</div></div>
+                <div class="card"><h2>🔍 DNS Analysis</h2><div id="network-dns">Loading...</div></div>
+            </div>
+            <div class="grid-2">
+                <div class="card"><h2>🔒 TLS Analysis</h2><div id="network-tls">Loading...</div></div>
+                <div class="card"><h2>🌍 HTTP Analysis</h2><div id="network-http">Loading...</div></div>
             </div>
         </div>
 
         <!-- Chains Tab -->
         <div id="tab-chains" class="tab-content">
             <div class="section-title">🔗 Exploitation Chains</div>
-            <div id="chains-container" style="display:grid;gap:15px"></div>
+            <div id="chains-container" style="display:grid;gap:12px"></div>
             <div class="section-title">📞 Call Graph Paths</div>
             <div class="card"><div id="callgraph-container">Loading...</div></div>
         </div>
@@ -148,56 +165,44 @@ DASHBOARD_HTML = """
         <!-- Knowledge Tab -->
         <div id="tab-knowledge" class="tab-content">
             <div class="grid-2">
-                <div class="card">
-                    <h2>🧠 Knowledge Graph Stats</h2>
-                    <div id="kg-stats">Loading...</div>
-                </div>
-                <div class="card">
-                    <h2>🔗 IoC Correlations</h2>
-                    <div id="ioc-stats">Loading...</div>
-                </div>
+                <div class="card"><h2>🧠 Knowledge Graph Stats</h2><div id="kg-stats">Loading...</div></div>
+                <div class="card"><h2>🔗 IoC Correlations</h2><div id="ioc-stats">Loading...</div></div>
             </div>
-            <div class="card" style="margin-top:20px">
+            <div class="card" style="margin-top:15px">
                 <h2>🕸️ Knowledge Graph</h2>
                 <div class="graph-viz" id="graph-viz">Knowledge Graph Visualization<br><small>Nodes & edges from cross-workspace correlations</small></div>
-                <div id="kg-nodes" style="max-height:400px;overflow-y:auto;margin-top:15px"></div>
+                <div id="kg-nodes" style="max-height:300px;overflow-y:auto;margin-top:12px"></div>
             </div>
         </div>
 
         <!-- Workspaces Tab -->
         <div id="tab-workspaces" class="tab-content">
-            <div class="card">
-                <h2>📁 Workspaces (Hybrid Federation)</h2>
-                <div id="workspaces-list">Loading...</div>
-            </div>
+            <div class="card"><h2>📁 Workspaces (Hybrid Federation)</h2><div id="workspaces-list">Loading...</div></div>
         </div>
 
         <!-- YARA Tab -->
         <div id="tab-yara" class="tab-content">
             <div class="grid-2">
-                <div class="card">
-                    <h2>🎯 YARA Rules</h2>
-                    <div id="yara-rules">Loading...</div>
-                </div>
-                <div class="card">
-                    <h2>🔍 YARA Scan Results</h2>
-                    <div id="yara-scans">Loading...</div>
-                </div>
+                <div class="card"><h2>🎯 YARA Rules</h2><div id="yara-rules">Loading...</div></div>
+                <div class="card"><h2>🔍 YARA Scan Results</h2><div id="yara-scans">Loading...</div></div>
             </div>
         </div>
 
         <!-- Deps Tab -->
         <div id="tab-deps" class="tab-content">
             <div class="grid-2">
-                <div class="card">
-                    <h2>📦 Dependencies</h2>
-                    <div id="deps-list">Loading...</div>
-                </div>
-                <div class="card">
-                    <h2>📋 SBOM</h2>
-                    <div id="sbom-content">Loading...</div>
-                </div>
+                <div class="card"><h2>📦 Dependencies</h2><div id="deps-list">Loading...</div></div>
+                <div class="card"><h2>📋 SBOM</h2><div id="sbom-content">Loading...</div></div>
             </div>
+        </div>
+
+        <!-- Tools Tab -->
+        <div id="tab-tools" class="tab-content">
+            <div class="grid-2">
+                <div class="card"><h2>🦠 Malware Tools</h2><div id="malware-tools">Loading...</div></div>
+                <div class="card"><h2>🌐 Network Tools</h2><div id="network-tools">Loading...</div></div>
+            </div>
+            <div class="card"><h2>🛠️ All External Tools</h2><div id="all-tools">Loading...</div></div>
         </div>
 
         <!-- Reports Tab -->
@@ -205,7 +210,7 @@ DASHBOARD_HTML = """
             <div class="card">
                 <h2>📄 Bug Bounty Reports</h2>
                 <div id="reports-content">Loading...</div>
-                <div style="margin-top:15px;display:flex;gap:10px">
+                <div style="margin-top:12px;display:flex;gap:8px">
                     <button class="btn" onclick="exportReport('json')">Export JSON</button>
                     <button class="btn" onclick="exportReport('sarif')">Export SARIF</button>
                     <button class="btn" onclick="exportReport('markdown')">Export Markdown</button>
@@ -214,8 +219,8 @@ DASHBOARD_HTML = """
         </div>
 
         <div class="footer">
-            <p>r3con v6.1 PRO | Advanced Binary & Firmware Security Research Tool</p>
-            <p style="margin-top:5px;font-size:0.8em">Knowledge: CVE DB 50+ patterns | YARA 5+ rules | IoC Correlator | Graph | SARIF | SBOM | CallGraph</p>
+            <p>r3con v6.2 PRO | Malware + Network + Binary + Firmware</p>
+            <p style="margin-top:4px;font-size:0.75em">Malware: PE/ELF/Behavior/Classifier/Unpacker/Anti-Analysis/Extractor | Network: Threat/Flow/DNS/TLS/HTTP | Tools: pefile/DIE/capa/YARA/tshark/suricata/zeek/nmap | Knowledge: CVE 50+ | YARA 5+ | IoC | Graph | SARIF | SBOM</p>
         </div>
     </div>
 
@@ -244,13 +249,16 @@ async function loadDashboard() {
         renderRisk(data.stats||{}, allFindings);
         renderChains(data.exploit_chains||[]);
         renderFindings(allFindings);
-        renderTaintFlows(data.taint_flows||[]);
         renderKG(data.knowledge_graph||{});
         renderWorkspaces(data.workspaces||[]);
         renderYara(data.yara||{});
         renderDeps(data.deps||{});
         renderReports(data.reports||{});
         renderCallGraph(data.call_graph||{});
+        renderMalware(data.malware||{});
+        renderNetwork(data.network||{});
+        renderTools(data.tools||{});
+        renderSummaries(data);
     } catch(e) {
         console.error(e);
         document.getElementById('overview-content').textContent = 'Error: '+e.message;
@@ -283,7 +291,7 @@ function renderSeverity(findings) {
 
 function renderStats(s) {
     const c=document.getElementById('stats-content');c.innerHTML='';
-    [['Total Findings',s.total_findings||0],['Exploit Chains',s.exploit_chains||0],['Taint Flows',s.taint_flows||0],['Exploitable',s.exploitable_flows||0],['IoCs',s.ioc_count||0],['YARA Hits',s.yara_hits||0]].forEach(([l,v])=>{
+    [['Total Findings',s.total_findings||0],['Exploit Chains',s.exploit_chains||0],['IoCs',s.ioc_count||0],['YARA Hits',s.yara_hits||0],['Malware Score',s.malware_score||0],['Threats',s.threat_count||0]].forEach(([l,v])=>{
         const d=document.createElement('div');d.className='stat-row';
         const ls=document.createElement('span');ls.className='stat-label';ls.textContent=l;
         const vs=document.createElement('span');vs.className='stat-value';vs.textContent=v;
@@ -296,7 +304,7 @@ function renderRisk(s, findings) {
     let score=0; findings.forEach(f=>{ if(f.severity==='CRITICAL')score+=10; else if(f.severity==='HIGH')score+=5; else if(f.severity==='MEDIUM')score+=2; else score+=1; });
     let level='LOW'; let color='#16a34a';
     if(score>=30){level='CRITICAL';color='#dc2626';} else if(score>=15){level='HIGH';color='#ea580c';} else if(score>=5){level='MEDIUM';color='#ca8a04';}
-    c.innerHTML=`<div style="text-align:center;padding:20px"><div style="font-size:3em;color:${color};font-weight:bold">${score}</div><div class="badge" style="background:${color};color:#fff;margin-top:10px">${level}</div><div style="color:#64748b;margin-top:10px;font-size:0.9em">${findings.length} findings analyzed</div><div class="progress-bar" style="margin-top:15px"><div class="progress-fill" style="width:${Math.min(100,score*2)}%;background:${color}"></div></div><div style="color:#94a3b8;margin-top:15px;font-size:0.85em">Est. Bounty: $${(findings.filter(f=>f.severity==='CRITICAL').length*2000+findings.filter(f=>f.severity==='HIGH').length*500+findings.filter(f=>f.severity==='MEDIUM').length*100).toLocaleString()}</div></div>`;
+    c.innerHTML=`<div style="text-align:center;padding:15px"><div style="font-size:2.5em;color:${color};font-weight:bold">${score}</div><div class="badge" style="background:${color};color:#fff;margin-top:8px">${level}</div><div style="color:#64748b;margin-top:8px;font-size:0.85em">${findings.length} findings</div><div class="progress-bar" style="margin-top:12px"><div class="progress-fill" style="width:${Math.min(100,score*2)}%;background:${color}"></div></div><div style="color:#94a3b8;margin-top:12px;font-size:0.8em">Est. Bounty: $${(findings.filter(f=>f.severity==='CRITICAL').length*2000+findings.filter(f=>f.severity==='HIGH').length*500).toLocaleString()}</div></div>`;
 }
 
 function renderFindings(findings) {
@@ -309,7 +317,6 @@ function renderFindings(findings) {
         const item=document.createElement('div');item.className='finding-item '+(f.severity||'info').toLowerCase();
         const typeDiv=document.createElement('div');typeDiv.className='finding-type';typeDiv.textContent=`[${f.severity||'INFO'}] ${f.type||f.finding_type||'Unknown'}`;
         const descDiv=document.createElement('div');descDiv.className='finding-desc';descDiv.textContent=f.description||'';
-        if(f.file){const fileDiv=document.createElement('div');fileDiv.style.cssText='color:#64748b;font-size:0.8em;margin-top:4px';fileDiv.textContent=f.file+(f.line?':'+f.line:'');descDiv.appendChild(fileDiv);}
         item.appendChild(typeDiv);item.appendChild(descDiv);c.appendChild(item);
     });
 }
@@ -318,65 +325,189 @@ function filterFindings(sev){currentFilter=sev;renderFindings(allFindings);}
 
 function renderChains(chains){
     const c=document.getElementById('chains-container');c.innerHTML='';
-    if(!chains.length){c.textContent='No exploitation chains detected';c.style.color='#64748b';return;}
+    if(!chains.length){c.textContent='No exploitation chains';c.style.color='#64748b';return;}
     chains.slice(0,20).forEach(chain=>{
         const box=document.createElement('div');box.className='chain-box';
         const nameDiv=document.createElement('div');nameDiv.className='chain-name';nameDiv.textContent='🔗 '+(chain.name||'Chain');
         const impactDiv=document.createElement('div');impactDiv.className='chain-impact';impactDiv.textContent='Impact: '+(chain.impact||'Unknown');
-        const stepsDiv=document.createElement('div');stepsDiv.className='chain-steps';stepsDiv.textContent=`Confidence: ${Math.round((chain.confidence||0)*100)}% | Steps: ${(chain.steps||[]).length} | Difficulty: ${chain.difficulty||'Unknown'}`;
-        box.appendChild(nameDiv);box.appendChild(impactDiv);box.appendChild(stepsDiv);c.appendChild(box);
-    });
-}
-
-function renderTaintFlows(flows){
-    const c=document.getElementById('taint-flows');c.innerHTML='';
-    if(!flows.length){c.textContent='No taint flows detected';c.style.color='#64748b';return;}
-    flows.slice(0,50).forEach(f=>{
-        const div=document.createElement('div');div.className='taint-flow';
-        const srcDiv=document.createElement('div');const srcLabel=document.createElement('span');srcLabel.className='taint-source';srcLabel.textContent='SOURCE: ';srcDiv.appendChild(srcLabel);srcDiv.appendChild(document.createTextNode(`${f.source_name||''} @ ${f.source_file||''}:${f.source_line||''}`));
-        const sinkDiv=document.createElement('div');const sinkLabel=document.createElement('span');sinkLabel.className='taint-sink';sinkLabel.textContent='SINK: ';sinkDiv.appendChild(sinkLabel);sinkDiv.appendChild(document.createTextNode(`${f.vulnerability_type||''} @ ${f.sink_file||''}:${f.sink_line||''}`));
-        const pathDiv=document.createElement('div');pathDiv.className='taint-path';pathDiv.textContent=`Path length: ${f.path_length||0} | Exploitable: ${f.exploitable?'✓':'✗'}`;
-        div.appendChild(srcDiv);div.appendChild(sinkDiv);div.appendChild(pathDiv);c.appendChild(div);
+        box.appendChild(nameDiv);box.appendChild(impactDiv);c.appendChild(box);
     });
 }
 
 function renderKG(kg){
-    const statsEl=document.getElementById('kg-stats'); if(statsEl) statsEl.innerHTML=`<div class="stat-row"><span class="stat-label">Total Nodes</span><span class="stat-value">${kg.total_nodes||0}</span></div><div class="stat-row"><span class="stat-label">Total Edges</span><span class="stat-value">${kg.total_edges||0}</span></div><div class="stat-row"><span class="stat-label">Workspaces</span><span class="stat-value">${kg.workspaces||0}</span></div>`;
-    const nodesEl=document.getElementById('kg-nodes'); if(nodesEl){nodesEl.innerHTML=''; (kg.nodes||[]).slice(0,20).forEach(n=>{const d=document.createElement('div');d.className='knowledge-node';d.innerHTML=`<span class="node-type">${safeText(n.type||'node')}</span> <strong>${safeText(n.id||'')}</strong><br><small style="color:#64748b">${safeText((n.data||{}).type||JSON.stringify(n.data||{}).slice(0,100))}</small>`;nodesEl.appendChild(d);});}
-    const viz=document.getElementById('graph-viz'); if(viz && kg.total_nodes>0){viz.innerHTML=`<div style="text-align:center"><div style="color:#22d3ee;font-size:1.2em">${kg.total_nodes} nodes • ${kg.total_edges} edges</div><div style="color:#64748b;font-size:0.85em;margin-top:8px">Graph: ${(kg.edge_types||[]).join(', ')||'correlations'}</div></div>`;}
+    const statsEl=document.getElementById('kg-stats'); if(statsEl) statsEl.innerHTML=`<div class="stat-row"><span class="stat-label">Nodes</span><span class="stat-value">${kg.total_nodes||0}</span></div><div class="stat-row"><span class="stat-label">Edges</span><span class="stat-value">${kg.total_edges||0}</span></div>`;
+    const nodesEl=document.getElementById('kg-nodes'); if(nodesEl){nodesEl.innerHTML=''; (kg.nodes||[]).slice(0,15).forEach(n=>{const d=document.createElement('div');d.className='knowledge-node';d.innerHTML=`<strong>${safeText(n.id||'')}</strong><br><small>${safeText((n.data||{}).type||'')}</small>`;nodesEl.appendChild(d);});}
 }
 
 function renderWorkspaces(ws){
     const c=document.getElementById('workspaces-list');c.innerHTML='';
-    if(!ws.length){c.textContent='No workspaces';c.style.color='#64748b';return;}
+    if(!ws.length){c.textContent='No workspaces';return;}
     ws.forEach(w=>{
         const d=document.createElement('div');d.className='workspace-item';
-        d.innerHTML=`<strong style="color:#22d3ee">${safeText(w.name||w.id||'workspace')}</strong> <span class="badge badge-ok">${safeText(w.status||'active')}</span><br><small style="color:#64748b">${safeText(w.target||'')} • ${w.findings||0} findings • ${w.files||0} files</small>`;
+        d.innerHTML=`<strong style="color:#22d3ee">${safeText(w.name||'ws')}</strong> <span class="badge badge-ok">${safeText(w.status||'active')}</span><br><small>${safeText(w.target||'')} • ${w.findings||0} findings</small>`;
         c.appendChild(d);
     });
 }
 
 function renderYara(yara){
-    const rulesEl=document.getElementById('yara-rules'); if(rulesEl){rulesEl.innerHTML=''; if(!yara.rules||!yara.rules.length){rulesEl.textContent='No YARA rules';} else {yara.rules.slice(0,20).forEach(r=>{const d=document.createElement('div');d.className='knowledge-node';d.innerHTML=`<strong style="color:#22d3ee">${safeText(r.name||r)}</strong><br><small style="color:#64748b">${safeText(r.description||'')}</small> <span class="badge" style="background:#334155">${safeText(r.severity||'')}</span>`;rulesEl.appendChild(d);});}}
-    const scansEl=document.getElementById('yara-scans'); if(scansEl){scansEl.innerHTML=''; if(!yara.hits||!yara.hits.length){scansEl.textContent='No YARA hits';} else {yara.hits.slice(0,20).forEach(h=>{const d=document.createElement('div');d.className='finding-item high';d.innerHTML=`<div class="finding-type">[${safeText(h.severity||'MEDIUM')}] ${safeText(h.rule||'rule')}</div><div class="finding-desc">${safeText(h.description||'')} @ ${safeText(h.file||'')}</div>`;scansEl.appendChild(d);});}}
+    const rulesEl=document.getElementById('yara-rules'); if(rulesEl){rulesEl.innerHTML=''; if(!yara.rules||!yara.rules.length){rulesEl.textContent='No YARA rules';} else {yara.rules.slice(0,15).forEach(r=>{const d=document.createElement('div');d.className='knowledge-node';d.innerHTML=`<strong style="color:#22d3ee">${safeText(r.name||r)}</strong> <span class="badge badge-info">${safeText(r.severity||'')}</span>`;rulesEl.appendChild(d);});}}
+    const scansEl=document.getElementById('yara-scans'); if(scansEl){scansEl.innerHTML=''; if(!yara.hits||!yara.hits.length){scansEl.textContent='No YARA hits';} else {yara.hits.slice(0,15).forEach(h=>{const d=document.createElement('div');d.className='finding-item high';d.innerHTML=`<div class="finding-type">${safeText(h.rule||'rule')}</div><div class="finding-desc">${safeText(h.description||'')}</div>`;scansEl.appendChild(d);});}}
 }
 
 function renderDeps(deps){
-    const listEl=document.getElementById('deps-list'); if(listEl){listEl.innerHTML=''; if(!deps.dependencies||!deps.dependencies.length){listEl.textContent='No dependencies scanned';} else {const table=document.createElement('table');table.innerHTML='<tr><th>Package</th><th>Version</th><th>Ecosystem</th><th>Status</th></tr>';deps.dependencies.slice(0,50).forEach(d=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${safeText(d.name)}</td><td>${safeText(d.version)}</td><td>${safeText(d.ecosystem||'')}</td><td>${d.vulnerable?'<span class="badge badge-crit">VULN</span>':'<span class="badge badge-ok">OK</span>'}</td>`;table.appendChild(tr);});listEl.appendChild(table);}}
-    const sbomEl=document.getElementById('sbom-content'); if(sbomEl){sbomEl.innerHTML=''; if(deps.sbom){sbomEl.innerHTML=`<div class="stat-row"><span class="stat-label">Format</span><span class="stat-value">${safeText(deps.sbom.bomFormat||'CycloneDX')}</span></div><div class="stat-row"><span class="stat-label">Components</span><span class="stat-value">${(deps.sbom.components||[]).length}</span></div><pre style="background:#0f172a;padding:10px;border-radius:4px;max-height:200px;overflow:auto;font-size:0.8em;color:#94a3b8">${safeText(JSON.stringify(deps.sbom,null,2).slice(0,2000))}</pre>`;} else {sbomEl.textContent='No SBOM generated';}}
+    const listEl=document.getElementById('deps-list'); if(listEl){listEl.innerHTML=''; if(!deps.dependencies||!deps.dependencies.length){listEl.textContent='No dependencies';} else {const table=document.createElement('table');table.innerHTML='<tr><th>Package</th><th>Version</th><th>Status</th></tr>';deps.dependencies.slice(0,30).forEach(d=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${safeText(d.name)}</td><td>${safeText(d.version)}</td><td>${d.vulnerable?'<span class="badge badge-crit">VULN</span>':'<span class="badge badge-ok">OK</span>'}</td>`;table.appendChild(tr);});listEl.appendChild(table);}}
+    const sbomEl=document.getElementById('sbom-content'); if(sbomEl){sbomEl.innerHTML=''; if(deps.sbom){sbomEl.innerHTML=`<div class="stat-row"><span class="stat-label">Components</span><span class="stat-value">${(deps.sbom.components||[]).length}</span></div>`;} else {sbomEl.textContent='No SBOM';}}
 }
 
 function renderReports(reports){
     const c=document.getElementById('reports-content');c.innerHTML='';
-    if(!reports.summary){c.innerHTML='<div style="color:#64748b">No reports generated yet. Run analysis to generate bug bounty report.</div>';return;}
-    c.innerHTML=`<div class="stat-row"><span class="stat-label">Risk Level</span><span class="stat-value sev-${(reports.summary.risk_level||'low').toLowerCase()}">${safeText(reports.summary.risk_level||'LOW')}</span></div><div class="stat-row"><span class="stat-label">Risk Score</span><span class="stat-value">${reports.summary.risk_score||0}</span></div><div class="stat-row"><span class="stat-label">Est. Bounty</span><span class="stat-value" style="color:#fbbf24">$${reports.summary.estimated_bounty||0}</span></div><div style="margin-top:15px"><h3>Compliance</h3><div style="color:#94a3b8;font-size:0.9em">${(reports.summary.compliance||[]).map(c=>`<span class="badge" style="background:#334155;margin:2px">${safeText(c)}</span>`).join('')}</div></div>`;
+    if(!reports.summary){c.innerHTML='<div style="color:#64748b">No reports yet</div>';return;}
+    c.innerHTML=`<div class="stat-row"><span class="stat-label">Risk Level</span><span class="stat-value sev-${(reports.summary.risk_level||'low').toLowerCase()}">${safeText(reports.summary.risk_level||'LOW')}</span></div><div class="stat-row"><span class="stat-label">Risk Score</span><span class="stat-value">${reports.summary.risk_score||0}</span></div><div class="stat-row"><span class="stat-label">Bounty</span><span class="stat-value" style="color:#fbbf24">$${reports.summary.estimated_bounty||0}</span></div>`;
 }
 
 function renderCallGraph(cg){
     const c=document.getElementById('callgraph-container');c.innerHTML='';
-    if(!cg.functions){c.textContent='No call graph data';return;}
-    c.innerHTML=`<div class="stat-row"><span class="stat-label">Functions</span><span class="stat-value">${cg.functions||0}</span></div><div class="stat-row"><span class="stat-label">Calls</span><span class="stat-value">${cg.calls||0}</span></div><div class="stat-row"><span class="stat-label">Paths to Sinks</span><span class="stat-value sev-critical">${(cg.paths_to_sinks||[]).length}</span></div>`;
-    if(cg.paths_to_sinks&&cg.paths_to_sinks.length){const list=document.createElement('div');list.style.marginTop='15px';cg.paths_to_sinks.slice(0,10).forEach(p=>{const d=document.createElement('div');d.className='finding-item critical';d.innerHTML=`<div class="finding-type">${safeText(p.entry)} → ${safeText(p.sink)}()</div><div class="finding-desc">Path: ${safeText((p.path||[]).join(' → '))}</div>`;list.appendChild(d);});c.appendChild(list);}
+    if(!cg.functions){c.textContent='No call graph';return;}
+    c.innerHTML=`<div class="stat-row"><span class="stat-label">Functions</span><span class="stat-value">${cg.functions||0}</span></div><div class="stat-row"><span class="stat-label">Calls</span><span class="stat-value">${cg.calls||0}</span></div>`;
+}
+
+function renderMalware(malware){
+    const analysisEl=document.getElementById('malware-analysis');
+    if(analysisEl){
+        if(!malware || Object.keys(malware).length===0){analysisEl.textContent='No malware analysis';}
+        else {
+            let html = '';
+            if(malware.summary) html+=`<div class="stat-row"><span class="stat-label">Verdict</span><span class="stat-value sev-${(malware.summary.verdict||'clean').toLowerCase().includes('malicious')?'critical':'low'}">${safeText(malware.summary.verdict||'CLEAN')}</span></div><div class="stat-row"><span class="stat-label">Score</span><span class="stat-value">${malware.summary.score||0}</span></div><div class="stat-row"><span class="stat-label">PE</span><span class="stat-value">${malware.summary.is_pe?'Yes':'No'}</span></div><div class="stat-row"><span class="stat-label">ELF</span><span class="stat-value">${malware.summary.is_elf?'Yes':'No'}</span></div><div class="stat-row"><span class="stat-label">Packed</span><span class="stat-value">${malware.summary.is_packed?'Yes':'No'}</span></div>`;
+            analysisEl.innerHTML=html;
+        }
+    }
+    const classEl=document.getElementById('malware-classification');
+    if(classEl){
+        if(!malware.classifier || !malware.classifier.families){classEl.textContent='No classification';}
+        else {
+            let html='';
+            Object.entries(malware.classifier.families).forEach(([fam,data])=>{
+                html+=`<div class="malware-family"><span class="family-name">${safeText(fam)}</span> <span class="badge badge-crit">${data.score}</span><br><small style="color:#94a3b8">${safeText(data.description||'')}</small></div>`;
+            });
+            if(!html) html='No families detected';
+            classEl.innerHTML=html;
+        }
+    }
+    const packerEl=document.getElementById('malware-packer');
+    if(packerEl){
+        if(!malware.unpacker){packerEl.textContent='No packer info';}
+        else {
+            packerEl.innerHTML=`<div class="stat-row"><span class="stat-label">Packed</span><span class="stat-value">${malware.unpacker.is_packed?'Yes':'No'}</span></div><div class="stat-row"><span class="stat-label">Entropy</span><span class="stat-value">${malware.unpacker.entropy||0}</span></div><div style="margin-top:8px">${(malware.unpacker.packers||[]).map(p=>`<span class="badge badge-warn">${safeText(p)}</span>`).join(' ')}</div>`;
+        }
+    }
+    const antiEl=document.getElementById('malware-anti');
+    if(antiEl){
+        if(!malware.anti_analysis){antiEl.textContent='No anti-analysis info';}
+        else {
+            antiEl.innerHTML=`<div class="stat-row"><span class="stat-label">Protected</span><span class="stat-value">${malware.anti_analysis.is_protected?'Yes':'No'}</span></div><div class="stat-row"><span class="stat-label">Score</span><span class="stat-value">${malware.anti_analysis.anti_analysis_score||0}</span></div><div class="stat-row"><span class="stat-label">Verdict</span><span class="stat-value">${safeText(malware.anti_analysis.verdict||'')}</span></div>`;
+        }
+    }
+    const iocsEl=document.getElementById('malware-iocs');
+    if(iocsEl){
+        if(!malware.extractor || !malware.extractor.iocs){iocsEl.textContent='No IoCs';}
+        else {
+            let html='';
+            Object.entries(malware.extractor.iocs).forEach(([type,items])=>{
+                if(items && items.length) html+=`<div style="margin-bottom:8px"><strong style="color:#22d3ee">${safeText(type)} (${items.length})</strong><br><small style="color:#94a3b8">${items.slice(0,5).map(i=>safeText(i)).join(', ')}${items.length>5?'...':''}</small></div>`;
+            });
+            iocsEl.innerHTML=html||'No IoCs';
+        }
+    }
+    const behEl=document.getElementById('malware-behavior');
+    if(behEl){
+        if(!malware.behavior){behEl.textContent='No behavior';}
+        else {
+            let html=`<div class="stat-row"><span class="stat-label">Verdict</span><span class="stat-value">${safeText(malware.behavior.verdict||'')}</span></div><div class="stat-row"><span class="stat-label">Score</span><span class="stat-value">${malware.behavior.malicious_score||0}</span></div>`;
+            if(malware.behavior.behaviors) html+=`<div style="margin-top:8px">${Object.entries(malware.behavior.behaviors).map(([k,v])=>`<span class="badge badge-info">${safeText(k)}:${v}</span>`).join(' ')}</div>`;
+            behEl.innerHTML=html;
+        }
+    }
+}
+
+function renderNetwork(network){
+    const protoEl=document.getElementById('network-protocol');
+    if(protoEl){
+        if(!network.protocol){protoEl.textContent='No protocol analysis';}
+        else {
+            protoEl.innerHTML=`<div class="stat-row"><span class="stat-label">Packets</span><span class="stat-value">${network.protocol.packets_read||0}</span></div><div class="stat-row"><span class="stat-label">Flows</span><span class="stat-value">${network.protocol.stats?.total_flows||0}</span></div><div class="stat-row"><span class="stat-label">Protocols</span><span class="stat-value">${Object.keys(network.protocol.protocols||{}).length}</span></div>`;
+        }
+    }
+    const threatEl=document.getElementById('network-threat');
+    if(threatEl){
+        if(!network.threat){threatEl.textContent='No threats';}
+        else {
+            threatEl.innerHTML=`<div class="stat-row"><span class="stat-label">Threats</span><span class="stat-value sev-critical">${network.threat.threat_count||0}</span></div><div style="margin-top:8px">${(network.threat.rules_triggered||[]).map(r=>`<span class="badge badge-crit">${safeText(r)}</span>`).join(' ')}</div>`;
+        }
+    }
+    const flowEl=document.getElementById('network-flow');
+    if(flowEl){
+        if(!network.flow){flowEl.textContent='No flow analysis';}
+        else {
+            flowEl.innerHTML=`<div class="stat-row"><span class="stat-label">Total Flows</span><span class="stat-value">${network.flow.total_flows||0}</span></div><div class="stat-row"><span class="stat-label">Beacons</span><span class="stat-value sev-high">${(network.flow.beacons||[]).length}</span></div>`;
+        }
+    }
+    const dnsEl=document.getElementById('network-dns');
+    if(dnsEl){
+        if(!network.dns){dnsEl.textContent='No DNS analysis';}
+        else {
+            dnsEl.innerHTML=`<div class="stat-row"><span class="stat-label">Queries</span><span class="stat-value">${network.dns.total_queries||0}</span></div><div class="stat-row"><span class="stat-label">DGA</span><span class="stat-value sev-high">${network.dns.dga_count||0}</span></div>`;
+        }
+    }
+    const tlsEl=document.getElementById('network-tls');
+    if(tlsEl){tlsEl.innerHTML=network.tls?`<div class="stat-row"><span class="stat-label">TLS Flows</span><span class="stat-value">${network.tls.tls_flows||0}</span></div><div class="stat-row"><span class="stat-label">Suspicious</span><span class="stat-value">${network.tls.suspicious_count||0}</span></div>`:'No TLS';}
+    const httpEl=document.getElementById('network-http');
+    if(httpEl){httpEl.innerHTML=network.http?`<div class="stat-row"><span class="stat-label">HTTP Flows</span><span class="stat-value">${network.http.http_flows||0}</span></div><div class="stat-row"><span class="stat-label">Suspicious</span><span class="stat-value">${network.http.urls_analyzed||0}</span></div>`:'No HTTP';}
+}
+
+function renderTools(tools){
+    const malEl=document.getElementById('malware-tools');
+    if(malEl){
+        if(!tools.malware){malEl.textContent='No malware tools info';}
+        else {
+            let html='';
+            Object.entries(tools.malware).forEach(([name,avail])=>{html+=`<div class="stat-row"><span class="stat-label">${safeText(name)}</span><span class="badge ${avail?'badge-ok':'badge-info'}">${avail?'OK':'N/A'}</span></div>`;});
+            malEl.innerHTML=html;
+        }
+    }
+    const netEl=document.getElementById('network-tools');
+    if(netEl){
+        if(!tools.network){netEl.textContent='No network tools info';}
+        else {
+            let html='';
+            Object.entries(tools.network).forEach(([name,avail])=>{html+=`<div class="stat-row"><span class="stat-label">${safeText(name)}</span><span class="badge ${avail?'badge-ok':'badge-info'}">${avail?'OK':'N/A'}</span></div>`;});
+            netEl.innerHTML=html;
+        }
+    }
+    const allEl=document.getElementById('all-tools');
+    if(allEl){
+        if(!tools.all){allEl.textContent='No tools info';}
+        else {
+            let html='<table><tr><th>Tool</th><th>Available</th><th>Category</th></tr>';
+            (tools.all||[]).forEach(t=>{html+=`<tr><td>${safeText(t.name)}</td><td><span class="badge ${t.available?'badge-ok':'badge-info'}">${t.available?'Yes':'No'}</span></td><td>${safeText((t.capabilities||[]).join(', '))}</td></tr>`;});
+            html+='</table>';
+            allEl.innerHTML=html;
+        }
+    }
+}
+
+function renderSummaries(data){
+    const malSum=document.getElementById('malware-summary');
+    if(malSum){
+        const mal=data.malware||{};
+        if(!mal.summary){malSum.innerHTML='<span style="color:#64748b">No malware analysis</span>';}
+        else {malSum.innerHTML=`<div class="stat-row"><span class="stat-label">Verdict</span><span class="stat-value sev-${mal.summary.verdict?.includes('MALICIOUS')?'critical':'low'}">${safeText(mal.summary.verdict||'CLEAN')}</span></div><div class="stat-row"><span class="stat-label">Score</span><span class="stat-value">${mal.summary.score||0}</span></div><div class="stat-row"><span class="stat-label">Family</span><span class="stat-value">${safeText(mal.summary.primary_family||'None')}</span></div><div class="stat-row"><span class="stat-label">IoCs</span><span class="stat-value">${mal.summary.ioc_count||0}</span></div>`;}
+    }
+    const netSum=document.getElementById('network-summary');
+    if(netSum){
+        const net=data.network||{};
+        if(!net.summary){netSum.innerHTML='<span style="color:#64748b">No network analysis</span>';}
+        else {netSum.innerHTML=`<div class="stat-row"><span class="stat-label">Flows</span><span class="stat-value">${net.summary.total_flows||0}</span></div><div class="stat-row"><span class="stat-label">Findings</span><span class="stat-value">${net.summary.total_findings||0}</span></div><div class="stat-row"><span class="stat-label">Threats</span><span class="stat-value sev-critical">${net.summary.threat_count||0}</span></div><div class="stat-row"><span class="stat-label">Beacons</span><span class="stat-value">${net.summary.beacon_count||0}</span></div>`;}
+    }
 }
 
 function doSearch(q){
@@ -397,7 +528,7 @@ setInterval(loadDashboard,30000);
 """
 
 def create_app(data_provider=None):
-    """Create Flask app PRO v6.1."""
+    """Create Flask app PRO v6.2."""
 
     @app.route('/')
     def dashboard():
@@ -415,32 +546,31 @@ def create_app(data_provider=None):
                 data = data_provider()
                 if isinstance(data, dict):
                     if 'findings' in data and isinstance(data['findings'], list):
-                        data['findings'] = data['findings'][:200]
+                        data['findings'] = data['findings'][:300]
                     if 'exploit_chains' in data and isinstance(data['exploit_chains'], list):
                         data['exploit_chains'] = data['exploit_chains'][:20]
-                    if 'taint_flows' in data and isinstance(data['taint_flows'], list):
-                        data['taint_flows'] = data['taint_flows'][:50]
                 return jsonify(data)
             except Exception as e:
-                return jsonify({"error": str(e)[:200], "findings": [], "exploit_chains": [], "taint_flows": [],
-                                "analysis": {"target": "error", "analysis_type": "error", "status": "error", "created_at": "2026-05-10T15:00:00"},
-                                "stats": {"total_findings": 0, "exploit_chains": 0, "taint_flows": 0, "exploitable_flows": 0}}), 500
+                return jsonify({"error": str(e)[:200], "findings": [], "analysis": {"target": "error", "analysis_type": "error", "status": "error", "created_at": "2026-05-10T15:00:00"}, "stats": {}}), 500
 
         return jsonify({
             "analysis": {"target": "unknown", "analysis_type": "static", "status": "in_progress", "created_at": datetime.now().isoformat()},
-            "findings": [], "exploit_chains": [], "taint_flows": [],
-            "stats": {"total_findings": 0, "exploit_chains": 0, "taint_flows": 0, "exploitable_flows": 0, "ioc_count": 0, "yara_hits": 0},
-            "knowledge_graph": {"total_nodes": 0, "total_edges": 0, "workspaces": 0, "nodes": [], "edge_types": []},
+            "findings": [], "exploit_chains": [],
+            "stats": {"total_findings": 0, "ioc_count": 0, "yara_hits": 0, "malware_score": 0, "threat_count": 0},
+            "knowledge_graph": {"total_nodes": 0, "total_edges": 0, "nodes": []},
             "workspaces": [],
             "yara": {"rules": [], "hits": []},
             "deps": {"dependencies": [], "sbom": None},
             "reports": {},
-            "call_graph": {"functions": 0, "calls": 0, "paths_to_sinks": []},
+            "call_graph": {"functions": 0, "calls": 0},
+            "malware": {},
+            "network": {},
+            "tools": {"malware": {}, "network": {}, "all": []},
         })
 
     @app.route('/api/health', methods=['GET'])
     def health():
-        return jsonify({"status": "ok", "version": "6.1.0-PRO"})
+        return jsonify({"status": "ok", "version": "6.2.0-PRO", "domains": ["binary", "malware", "network", "firmware", "knowledge"]})
 
     @app.route('/api/export', methods=['GET'])
     def api_export():
@@ -483,25 +613,50 @@ def create_app(data_provider=None):
         except Exception as e:
             return jsonify({"error": str(e)[:200], "rules": []}), 500
 
-    @app.route('/api/iocs', methods=['GET'])
-    def api_iocs():
+    @app.route('/api/tools', methods=['GET'])
+    def api_tools():
         try:
-            from modules.knowledge.ioc_correlator import IoCCorrelator
-            corr = IoCCorrelator()
-            # Get graph stats as proxy for IoC count
-            from modules.knowledge.graph import KnowledgeGraph
-            kg = KnowledgeGraph()
-            stats = kg.get_stats()
-            return jsonify({"stats": stats, "message": "IoC correlator active"})
+            from modules.integration.malware_tools import detect_malware_tools
+            from modules.integration.network_tools import detect_network_tools
+            from core.plugin_system import default_registry
+            malware_tools = detect_malware_tools()
+            network_tools = detect_network_tools()
+            registry = default_registry()
+            all_tools = registry.list()
+            return jsonify({"malware": malware_tools, "network": network_tools, "all": all_tools})
         except Exception as e:
             return jsonify({"error": str(e)[:200]}), 500
 
-    return app
+    @app.route('/api/malware/scan', methods=['POST'])
+    def api_malware_scan():
+        try:
+            data = request.get_json() or {}
+            file_path = data.get("file_path", "")
+            if not file_path:
+                return jsonify({"error": "file_path required"}), 400
+            from modules.malware import analyze_malware
+            result = analyze_malware(file_path)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({"error": str(e)[:500]}), 500
 
+    @app.route('/api/network/scan', methods=['POST'])
+    def api_network_scan():
+        try:
+            data = request.get_json() or {}
+            pcap_path = data.get("pcap_path", "")
+            if not pcap_path:
+                return jsonify({"error": "pcap_path required"}), 400
+            from modules.network import analyze_network
+            result = analyze_network(pcap_path)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({"error": str(e)[:500]}), 500
+
+    return app
 
 if __name__ == '__main__':
     application = create_app()
-    print("⚡ r3con v6.1 PRO Dashboard")
-    print("⚠ Local use only - no authentication - do not expose to internet")
+    print("⚡ r3con v6.2 PRO Dashboard - Malware + Network")
     print("http://127.0.0.1:5000")
     application.run(debug=False, host='127.0.0.1', port=5000, use_reloader=False)
