@@ -247,50 +247,91 @@ class DependencyScanner:
             return self._parse_gemfile(content)
         return []
 
+    def _normalize_package_name(self, name: str) -> str:
+        """PEP 503 normalization."""
+        return re.sub(r"[-_.]+", "-", name).lower()
+
     def _parse_requirements(self, content: str) -> List[Dict]:
-        """Parse requirements.txt format."""
+        """Parse requirements.txt format - FIXED handles extras, URLs, complex specifiers."""
         deps = []
         for line in content.splitlines():
             line = line.strip()
             if not line or line.startswith("#") or line.startswith("-"):
                 continue
-            # Match: package==version, package>=version, package~=version
-            m = re.match(r"^([a-zA-Z0-9_\-\.]+)\s*([=<>~!]+)\s*([\d\.]+)", line)
-            if m:
-                deps.append({
-                    "name":       m.group(1).lower(),
-                    "version":    m.group(3),
-                    "operator":   m.group(2),
-                    "manager":    "pip",
-                    "raw":        line,
-                })
-            else:
-                # Package without version constraint
-                m2 = re.match(r"^([a-zA-Z0-9_\-\.]+)\s*$", line)
-                if m2:
+            # Skip URL dependencies and editable installs
+            if "://" in line or line.startswith("git+") or "@ http" in line:
+                # Try to extract package name from URL dep: package @ https://...
+                m_url = re.match(r"^([a-zA-Z0-9_\-\.]+)\s*@\s*", line)
+                if m_url:
                     deps.append({
-                        "name":    m2.group(1).lower(),
+                        "name": self._normalize_package_name(m_url.group(1)),
                         "version": "unknown",
                         "operator": "",
                         "manager": "pip",
-                        "raw":     line,
+                        "raw": line,
+                        "is_url": True,
                     })
+                continue
+
+            # Handle extras: package[extra]==1.0.0
+            # Match: package[extras] op version
+            m = re.match(r"^([a-zA-Z0-9_\-\.]+)(?:\[[^\]]+\])?\s*([=<>~!]+)?\s*([\d\.]+)?", line)
+            if m:
+                pkg_name = m.group(1)
+                operator = m.group(2) or ""
+                version = m.group(3) or "unknown"
+                # If line contains only name without operator, version unknown
+                if not operator and not version:
+                    # Check if it's just a name
+                    if re.match(r"^[a-zA-Z0-9_\-\.]+$", line.split()[0].split("[")[0]):
+                        version = "unknown"
+                    else:
+                        continue
+
+                deps.append({
+                    "name": self._normalize_package_name(pkg_name),
+                    "version": version,
+                    "operator": operator,
+                    "manager": "pip",
+                    "raw": line,
+                })
         return deps
 
+    def _clean_npm_version(self, version: str) -> str:
+        """Clean npm version string handling ^, ~, >=, etc - FIXED."""
+        if not version or not isinstance(version, str):
+            return "unknown"
+        version = version.strip()
+        # Handle complex ranges: ">=1.0.0 <2.0.0" -> take first version
+        # Handle ^1.2.3, ~1.2.3, >=1.2.3, etc
+        # Also handle "1.2.3 - 2.3.4" and "latest", "*", etc
+
+        if version in ("*", "latest", ""):
+            return "unknown"
+
+        # Extract first semver-like version
+        m = re.search(r"(\d+\.\d+\.\d+|\d+\.\d+|\d+)", version)
+        if m:
+            return m.group(1)
+
+        return version
+
     def _parse_package_json(self, content: str) -> List[Dict]:
-        """Parse package.json format."""
+        """Parse package.json format - FIXED handles ^ ~ >= etc."""
         deps = []
         try:
             data = json.loads(content)
-            for section in ("dependencies", "devDependencies", "peerDependencies"):
+            for section in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"):
                 for name, version in data.get(section, {}).items():
-                    # Clean version string (^1.0.0 → 1.0.0)
-                    clean = re.sub(r"[^0-9\.]", "", version)
+                    if not isinstance(version, str):
+                        continue
+                    clean = self._clean_npm_version(version)
                     deps.append({
-                        "name":    name.lower(),
-                        "version": clean or version,
+                        "name": name.lower(),
+                        "version": clean,
+                        "original_version": version,
                         "manager": "npm",
-                        "raw":     f"{name}: {version}",
+                        "raw": f"{name}: {version}",
                     })
         except json.JSONDecodeError:
             pass
@@ -396,25 +437,53 @@ class DependencyScanner:
         return sorted(findings, key=lambda x:
             {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}.get(x["severity"], 4))
 
+    def _parse_version(self, version: str) -> List[int]:
+        """Parse version string into comparable int list - FIXED handles pre-release."""
+        if not version or version == "unknown":
+            return []
+        # Remove pre-release and build metadata: 1.0.0-alpha+001 -> 1.0.0
+        version = re.split(r"[-+]", version)[0]
+        parts = []
+        for p in version.split(".")[:4]:
+            try:
+                # Handle non-numeric parts
+                m = re.match(r"(\d+)", p)
+                if m:
+                    parts.append(int(m.group(1)))
+                else:
+                    parts.append(0)
+            except ValueError:
+                parts.append(0)
+        while len(parts) < 3:
+            parts.append(0)
+        return parts
+
     def _version_matches(self, version: str, version_range: str) -> bool:
-        """Check if a version matches a range like '< 2.0.0'."""
-        if version == "unknown":
+        """Check if a version matches a range like '< 2.0.0' - FIXED handles complex."""
+        if version == "unknown" or not version:
             return True  # Assume vulnerable if version unknown
 
-        m = re.match(r"([<>=!]+)\s*([\d\.]+)", version_range)
+        # version_range can be "< 2.0.0", we parse operator and version
+        m = re.match(r"([<>=!]+)\s*([\d\.]+)", version_range.strip())
         if not m:
             return False
 
-        operator    = m.group(1)
-        range_ver   = m.group(2)
+        operator = m.group(1).strip()
+        range_ver = m.group(2).strip()
 
         try:
-            v_parts  = [int(x) for x in version.split(".")[:3]]
-            r_parts  = [int(x) for x in range_ver.split(".")[:3]]
+            v_parts = self._parse_version(version)
+            r_parts = self._parse_version(range_ver)
+
+            if not v_parts or not r_parts:
+                return False
 
             # Pad to same length
-            while len(v_parts) < 3: v_parts.append(0)
-            while len(r_parts) < 3: r_parts.append(0)
+            max_len = max(len(v_parts), len(r_parts))
+            while len(v_parts) < max_len:
+                v_parts.append(0)
+            while len(r_parts) < max_len:
+                r_parts.append(0)
 
             if operator == "<":
                 return v_parts < r_parts
@@ -424,9 +493,11 @@ class DependencyScanner:
                 return v_parts > r_parts
             elif operator == ">=":
                 return v_parts >= r_parts
-            elif operator == "==":
+            elif operator in ("==", "="):
                 return v_parts == r_parts
-        except (ValueError, AttributeError):
+            elif operator == "!=":
+                return v_parts != r_parts
+        except (ValueError, AttributeError, IndexError):
             pass
 
         return False
