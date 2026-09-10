@@ -1,14 +1,21 @@
-# r3con 7.2.0 — Security Research Toolkit
+# r3con 7.3.0 — Security Research Toolkit
 
 > Outil modulaire de recherche en sécurité pour l’audit de code, les binaires, les APK, les firmwares, les réseaux, les malwares, les conteneurs et les rapports.
 
 [![Python 3.9–3.13](https://img.shields.io/badge/python-3.9%E2%80%933.13-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-31%20passed%2C%202%20skipped-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-121%20passed%2C%203%20skipped-brightgreen.svg)](tests/)
 [![License MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 ## Statut de la release
 
-La version **7.2.0** est la release stable du dépôt. Elle fournit une base offline-first, des dépendances optionnelles par domaine, une CLI Click/Rich, des contrats de résultats normalisés et des tests de non-régression. Les résultats sont des indications d’analyse et doivent être vérifiés par un analyste qualifié. L’outil ne remplace pas une revue manuelle, un bac à sable isolé ou un avis professionnel.
+La version **7.3.0** ajoute le contrat de finding v2.1 (localisation, exploitabilité,
+références CWE/CVE/ATT&CK, corroboration multi-outils), la détection unifiée des cibles,
+le plan d'analyse explicable avec reprise et cache versionné, l'analyse différentielle
+(binaires, APK, firmwares, rapports — JSON/Markdown/SARIF), le module `supply-chain`
+(manifestes/lockfiles, SBOM CycloneDX et SPDX, politique locale offline), un runner
+dynamique isolé (réseau coupé par défaut, limites de ressources, mode simulation),
+le triage de fuzzing exporté en findings et les commandes `explain`/`summarize`/`ask`.
+La release **7.2.0** reste la base stable validée ; 7.3.0 est en cours de validation. Elle fournit une base offline-first, des dépendances optionnelles par domaine, une CLI Click/Rich, des contrats de résultats normalisés et des tests de non-régression. Les résultats sont des indications d’analyse et doivent être vérifiés par un analyste qualifié. L’outil ne remplace pas une revue manuelle, un bac à sable isolé ou un avis professionnel.
 
 ## Capacités principales
 
@@ -87,7 +94,17 @@ r3con malware analyze ./sample --profile full
 
 # Vérifier les outils disponibles
 r3con tools status
+
+# v7.3 : plan explicable, supply chain, différentiel, explication citée
+r3con scan ./program --profile auto --explain-plan
+r3con supply-chain scan ./project --sbom cyclonedx --dependencies --secrets --report supply-chain.json
+r3con compare ./old.apk ./new.apk --format md --output diff.md
+r3con explain FINDING_ID --report report.json
+r3con ask report.json "Quels risques sont corroborés par plusieurs outils ?"
 ```
+
+Toutes les fonctions v7.3 sont offline-first : aucun fichier, secret ou donnée n'est
+envoyé vers un service distant par défaut.
 
 Pour les commandes exactes et les options de chaque groupe, consulter le [guide utilisateur complet](docs/USER_GUIDE.md). Pour l’architecture interne et les contrats de données, consulter le [manuel technique](docs/MANUEL_TECHNIQUE_v7.2.md).
 
