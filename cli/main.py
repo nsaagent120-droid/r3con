@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-r3con v7.2.0 Titan-Omega - Modular CLI PRO
+r3con v7.x Titan-Omega - Modular CLI PRO
 Lean main.py that imports groups - efficace, utile, puissant
 
 Structure v6.0 (clean):

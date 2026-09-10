@@ -59,8 +59,9 @@ def dashboard_test(json_output):
     """Test dashboard components."""
     from modules.web.dashboard_v2 import SOCKETIO_AVAILABLE
 
+    from core.__version__ import __version__
     result = {
-        "version": "7.2.0",
+        "version": __version__,
         "websocket_available": SOCKETIO_AVAILABLE,
         "dashboard_v1": False,
         "dashboard_v2": False,

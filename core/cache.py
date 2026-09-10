@@ -12,9 +12,10 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
+from core.__version__ import __version__ as CACHE_VERSION  # une release = un cache invalidé
+
 CACHE_DIR = Path.home() / ".r3con" / "cache"
 CACHE_FILE = CACHE_DIR / "analysis_cache.json"
-CACHE_VERSION = "7.2.0"
 # Empreinte du contrat de résultat : invalider le cache quand le schéma change.
 SCHEMA_KEY_VERSION = "result-2.1"
 CACHE_SCHEMA = 2
