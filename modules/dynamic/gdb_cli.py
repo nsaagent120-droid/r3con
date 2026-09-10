@@ -4,34 +4,43 @@ Interface ligne de commande pour l'analyse dynamique.
 Usage: python -m modules.dynamic.gdb_cli --binary ./vuln [options]
 """
 
-import sys
-import os
-import json
 import argparse
+import json
+import os
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from modules.dynamic.gdb_analyzer import (
     DynamicAnalyzer,
-    generate_cyclic_pattern,
     find_cyclic_offset,
+    generate_cyclic_pattern,
 )
 
 
 def cmd_status(args):
     """Afficher l'état de l'environnement."""
     da = DynamicAnalyzer(args.binary or "")
-    s  = da.status()
+    s = da.status()
+    # Les séquences d'échappement sont préparées hors des f-strings pour rester
+    # compatibles Python 3.9-3.11 (le dosseret dans une expression f-string est
+    # interdit avant Python 3.12).
+    ok_mark = "\033[32m✓\033[0m"
+    bad_mark = "\033[31m✗\033[0m"
+    bad_gdb = "\033[31m✗ Not installed\033[0m"
+
+    def _mark(available: bool, missing: str = "") -> str:
+        return ok_mark if available else (missing or bad_mark)
     print("\n\033[36m r3con Dynamic Analysis — Environment Status\033[0m\n")
-    print(f"  GDB available  : {'\033[32m✓\033[0m' if s['gdb_available'] else '\033[31m✗ Not installed\033[0m'}")
+    print(f"  GDB available  : {_mark(s['gdb_available'], bad_gdb)}")
     print(f"  Framework      : \033[33m{s['framework']}\033[0m")
-    print(f"  pwndbg         : {'\033[32m✓\033[0m' if s['pwndbg_available'] else '✗'}")
-    print(f"  peda           : {'\033[32m✓\033[0m' if s['peda_available'] else '✗'}")
-    print(f"  gef            : {'\033[32m✓\033[0m' if s['gef_available'] else '✗'}")
+    print(f"  pwndbg         : {_mark(s['pwndbg_available'])}")
+    print(f"  peda           : {_mark(s['peda_available'])}")
+    print(f"  gef            : {_mark(s['gef_available'])}")
     if args.binary:
         print(f"  Binary         : {args.binary}")
-        print(f"  Binary exists  : {'\033[32m✓\033[0m' if s['binary_exists'] else '\033[31m✗\033[0m'}")
+        print(f"  Binary exists  : {_mark(s['binary_exists'])}")
 
     if not s['gdb_available']:
         print("\n  \033[33mInstall GDB:\033[0m")

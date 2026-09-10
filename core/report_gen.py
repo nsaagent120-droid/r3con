@@ -53,7 +53,7 @@ class ReportGenerator:
             f"**Version:** r3con v{__version__}  ",
             "", "---", "",
         ]
-        
+
         # Stats
         if findings:
             sev_counts = {}
@@ -65,12 +65,12 @@ class ReportGenerator:
                 if sev in sev_counts:
                     lines.append(f"- **{sev}**: {sev_counts[sev]}")
             lines.append("")
-            
+
             # Risk rating if available
             if data.get("risk_rating"):
                 rr = data["risk_rating"]
                 lines.append(f"**Risk Rating:** {rr.get('rating','N/A')} (score: {rr.get('score','N/A')}/100)\n")
-        
+
         if findings:
             lines.append("## Findings\n")
             sorted_f = sorted(findings, key=lambda x: SEV_ORDER.index(x.get("severity","INFO")) if x.get("severity","INFO") in SEV_ORDER else 99)
@@ -78,22 +78,47 @@ class ReportGenerator:
                 sev = f.get("severity","INFO")
                 ftype = f.get("type", f.get("finding_type", "Unknown"))
                 loc = ""
+                location = f.get("location") or {}
                 if f.get("file"):
                     loc += f"`{Path(f['file']).name}` "
+                elif isinstance(location, dict) and location.get("file"):
+                    loc += f"`{Path(str(location['file'])).name}` "
                 if f.get("line"):
                     loc += f"line {f['line']}"
+                elif isinstance(location, dict) and location.get("line"):
+                    loc += f"line {location['line']}"
                 if f.get("offset"):
                     loc += f"offset {f['offset']}"
-                
+                elif isinstance(location, dict) and location.get("offset"):
+                    loc += f"offset {location['offset']}"
+                if isinstance(location, dict) and location.get("function"):
+                    loc += f" fn:{location['function']}"
+
                 cwe = f.get("cwe", "")
+                if not cwe:
+                    refs = f.get("references") or {}
+                    if isinstance(refs, dict) and refs.get("cwe"):
+                        cwe = ", ".join(refs["cwe"])
                 cvss = f.get("cvss", "")
                 confidence = f.get("confidence", "")
                 fix = f.get("fix", f.get("recommendation", ""))
-                
+
                 lines += [
                     f"### [{sev}] {ftype}",
                     f"**Location:** {loc or 'N/A'}  ",
                 ]
+                meta_bits = []
+                if f.get("status") and f.get("status") != "needs-review":
+                    meta_bits.append(f"status: {f['status']}")
+                if f.get("exploitability") and f.get("exploitability") != "unknown":
+                    meta_bits.append(f"exploitabilité: {f['exploitability']}")
+                if f.get("fallback"):
+                    meta_bits.append("⚠ résultat issu d'un FALLBACK (outil spécialisé absent)")
+                corro = (f.get("corroboration") or {}).get("tools") or []
+                if len(corro) > 1:
+                    meta_bits.append("corroboré par: " + ", ".join(corro))
+                if meta_bits:
+                    lines.append(f"**Qualité:** {' · '.join(meta_bits)}  ")
                 if cwe:
                     lines.append(f"**CWE:** {cwe}  ")
                 if cvss:
@@ -117,7 +142,27 @@ class ReportGenerator:
                 if f.get("tags"):
                     lines.append(f"**Tags:** {', '.join(f['tags'])}  ")
                 lines.append("")
-        
+
+        # Audit metadata (v7.3): reproductibilité et limites appliquées.
+        meta = data.get("report_meta") or {}
+        if meta:
+            lines.append("## Métadonnées d'audit\n")
+            lines.append(f"- r3con v{meta.get('r3con_version', __version__)} · "
+                         f"schéma {meta.get('schema_version', '2.1')}")
+            lines.append(f"- Généré : {meta.get('generated_utc', 'n/a')} · "
+                         f"durée {meta.get('duration_ms', 'n/a')} ms")
+            lines.append(f"- Profil : {meta.get('profile', 'n/a')} · cible : {meta.get('target_kind', 'n/a')} "
+                         f"({'avec' if meta.get('cache_enabled') else 'sans'} cache"
+                         f"{', reprise ' + str(meta.get('resumed_from')) if meta.get('resumed_from') else ''})")
+            if meta.get("fallbacks_used"):
+                lines.append(f"- Fallbacks utilisés : {', '.join(meta['fallbacks_used'])}")
+            if meta.get("tool_versions"):
+                lines.append("- Versions d'outils : " + ", ".join(
+                    f"{k}={v.splitlines()[0][:40]}" for k, v in meta["tool_versions"].items()))
+            if meta.get("limits_applied"):
+                lines.append(f"- Limites appliquées : {meta['limits_applied']}")
+            lines.append("- 100 % local : aucune donnée du projet n'a été transmise.\n")
+
         # Exploit chains
         if data.get("exploit_chains"):
             lines.append("## Exploit Chains\n")
@@ -127,17 +172,17 @@ class ReportGenerator:
                 lines.append(f"- Confidence: {chain.get('confidence','')}")
                 lines.append(f"- Steps: {len(chain.get('steps',[]))}")
                 lines.append("")
-        
+
         # Taint flows
         if data.get("taint_flows"):
             lines.append("## Taint Flows\n")
             for flow in data["taint_flows"][:10]:
                 lines.append(f"- {flow.get('source_name','source')} (L{flow.get('source_line','')}) → {flow.get('sink_name','sink')} (L{flow.get('sink_line','')}) - {flow.get('vulnerability_type','')}")
             lines.append("")
-        
+
         if data.get("output"):
             lines += ["## Raw Output", "", "```", data["output"][:5000], "```", ""]
-        
+
         # Recommendations
         lines += ["## Recommendations", "", "1. Fix CRITICAL and HIGH findings first", "2. Enable compiler protections: -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wl,-z,RELRO,-z,NOW", "3. Use safe functions: strncpy, snprintf, fgets", "4. Validate all user inputs", ""]
         lines += ["---", f"*Generated by r3con v{__version__} - Advanced Security Research Tool*"]
@@ -168,7 +213,7 @@ class ReportGenerator:
                 extra += f'<span style="background:#1e293b;color:#fbbf24;padding:2px 6px;border-radius:3px;font-size:11px;margin-left:4px">CVSS:{cvss}</span>'
             if confidence:
                 extra += f'<span style="background:#1e293b;color:#a78bfa;padding:2px 6px;border-radius:3px;font-size:11px;margin-left:4px">conf:{confidence}</span>'
-            
+
             fhtml += f"""
 <div style="border-left:4px solid {color};padding:12px 16px;margin:12px 0;background:#1a1a2e;border-radius:6px">
   <div>
@@ -181,14 +226,14 @@ class ReportGenerator:
   <p style="margin:6px 0;color:#4ade80;font-size:12px">↳ Fix: {f.get('fix', f.get('recommendation',''))}</p>
   {f'<p style="margin:4px 0;color:#64748b;font-size:11px">Evidence: <code>{f.get("evidence",{}).get("code","")[:80]}</code></p>' if f.get("evidence",{}).get("code") else ""}
 </div>"""
-        
+
         # Summary stats
         sev_counts = {}
         for f in findings:
             s = f.get("severity","INFO")
             sev_counts[s] = sev_counts.get(s,0)+1
         stats_html = "".join(f'<span style="margin-right:12px"><strong style="color:{SEV_COLORS.get(sev,"#fff")}">{sev}:</strong> {count}</span>' for sev,count in sev_counts.items())
-        
+
         return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>r3con Report — {data.get('type','').upper()}</title>
 <style>
@@ -227,7 +272,7 @@ class ReportGenerator:
         """NEW: SARIF output for integration with GitHub, VSCode, etc."""
         findings = data.get("findings", [])
         target = data.get("source", data.get("binary", data.get("target", "unknown")))
-        
+
         sarif = {
             "version": "2.1.0",
             "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
@@ -244,7 +289,7 @@ class ReportGenerator:
                 "artifacts": [{"location": {"uri": target}}]
             }]
         }
-        
+
         rules = {}
         for f in findings:
             ftype = f.get("type", f.get("finding_type", "Unknown"))
@@ -257,7 +302,7 @@ class ReportGenerator:
                     "defaultConfiguration": {"level": "error" if f.get("severity") in ("CRITICAL","HIGH") else "warning"},
                     "properties": {"tags": ["security", f.get("severity","INFO")], "cwe": f.get("cwe",""), "cvss": f.get("cvss","")}
                 }
-            
+
             result = {
                 "ruleId": ftype.replace(" ", "_").lower(),
                 "level": "error" if f.get("severity") in ("CRITICAL","HIGH") else "warning" if f.get("severity") in ("MED","MEDIUM") else "note",
@@ -271,6 +316,6 @@ class ReportGenerator:
                 "properties": {"severity": f.get("severity","INFO"), "confidence": f.get("confidence",0.5)}
             }
             sarif["runs"][0]["results"].append(result)
-        
+
         sarif["runs"][0]["tool"]["driver"]["rules"] = list(rules.values())
         return json.dumps(sarif, indent=2)

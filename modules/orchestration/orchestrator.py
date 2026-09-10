@@ -21,7 +21,8 @@ try:
         def __init__(self, target: str, profile: str = "auto", timeout: int = 120,
                      max_mb: int = 256, max_workers: int = 3,
                      reverse_engine: str | None = None, with_ghidra: bool | None = None,
-                     cache: bool = True, cache_dir: str | None = None):
+                     cache: bool = True, cache_dir: str | None = None,
+                     resume_dir: str | None = None, **extra_overrides):
             # Map old params to new
             overrides = {}
             if timeout:
@@ -32,13 +33,17 @@ try:
                 overrides["analysis.max_workers"] = max_workers
             if with_ghidra:
                 overrides["external_tools.enabled.ghidra"] = True
+            overrides["analysis.cache_enabled"] = bool(cache)
+            if cache_dir:
+                overrides["analysis.cache_dir"] = cache_dir
+            overrides.update(extra_overrides)
 
             super().__init__(
                 target=target,
                 profile=profile,
                 use_pipeline=False,  # Classic uses sequential for backward compat
-                cache_enabled=cache,
                 cache_dir=cache_dir,
+                resume_dir=resume_dir,
                 **overrides
             )
             # Keep old attributes for compat
@@ -70,7 +75,8 @@ except ImportError:
         def __init__(self, target: str, profile: str = "auto", timeout: int = 120,
                      max_mb: int = 256, max_workers: int = 3,
                      reverse_engine: str | None = None, with_ghidra: bool | None = None,
-                     cache: bool = True, cache_dir: str | None = None):
+                     cache: bool = True, cache_dir: str | None = None,
+                     resume_dir: str | None = None, **extra_overrides):
             self.path = Path(target)
             self.profile = profile
             self.timeout = max(1, timeout)

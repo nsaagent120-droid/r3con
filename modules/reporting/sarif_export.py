@@ -36,16 +36,30 @@ TOOL_VERSION = "5.0.2-fixed-p2"
 
 
 class SARIFExporter:
-    """Export r3con findings to SARIF format - FIXED."""
+    """Export r3con findings to SARIF format - FIXED.
 
-    def __init__(self):
+    v7.3 : la version du driver suit ``core.__version__`` (fini le numéro
+    codé en dur) et un bloc ``metadata`` optionnel (hash de cible, profil,
+    fallbacks, durées) est publié dans les propriétés SARIF pour
+    l'horodatage d'audit.
+    """
+
+    def __init__(self, metadata: Optional[Dict] = None):
         self.tool_name = "r3con"
-        self.tool_version = TOOL_VERSION
+        try:
+            from core.__version__ import __version__ as _ver
+            self.tool_version = _ver
+        except ImportError:
+            self.tool_version = TOOL_VERSION
         self.tool_url = "https://github.com/nsaagent120-droid/r3con"
+        self.metadata = metadata or {}
 
     def export(self, findings: List[Dict],
                target: str = "unknown",
-               output_path: Optional[str] = None) -> str:
+               output_path: Optional[str] = None,
+               metadata: Optional[Dict] = None) -> str:
+        if metadata:
+            self.metadata = {**self.metadata, **metadata}
         """Export findings to SARIF format."""
         # Deduplicate and limit
         findings = self._deduplicate(findings)
@@ -84,8 +98,11 @@ class SARIFExporter:
 
         return output_path
 
-    def export_string(self, findings: List[Dict], target: str = "unknown") -> str:
+    def export_string(self, findings: List[Dict], target: str = "unknown",
+                      metadata: Optional[Dict] = None) -> str:
         """Export findings to SARIF as a JSON string."""
+        if metadata:
+            self.metadata = {**self.metadata, **metadata}
         findings = self._deduplicate(findings)[:1000]
         sarif = self._build_sarif(findings, target)
         return json.dumps(sarif, indent=2)
@@ -136,6 +153,10 @@ class SARIFExporter:
                     "properties": {
                         "r3con_version": self.tool_version,
                         "total_findings": len(findings),
+                        **{k: v for k, v in self.metadata.items()
+                           if k in {"target_hash", "sha256", "profile", "duration_ms",
+                                    "fallbacks_used", "limits_applied", "generated_utc",
+                                    "tool_versions", "resumed_from", "offline"}},
                     }
                 }
             ]
@@ -154,6 +175,11 @@ class SARIFExporter:
 
             sev = f.get("severity", "INFO")
             cwe = f.get("cwe", "")
+            if not cwe:
+                refs = f.get("references") or {}
+                cwes = refs.get("cwe") if isinstance(refs, dict) else None
+                if cwes:
+                    cwe = cwes[0]
             cvss = f.get("cvss", SECURITY_SEVERITY_MAP.get(sev, "5.0"))
 
             rule = {
@@ -193,8 +219,9 @@ class SARIFExporter:
         """Build a single SARIF result from a finding."""
         sev = finding.get("severity", "INFO")
         rule_id = self._rule_id(finding.get("type", "UNKNOWN"))
-        file = finding.get("file", "unknown")
-        line = finding.get("line") or 1
+        location = finding.get("location") or {}
+        file = finding.get("file") or (location.get("file") if isinstance(location, dict) else "") or "unknown"
+        line = finding.get("line") or (location.get("line") if isinstance(location, dict) else None) or 1
 
         # Validate line
         try:

@@ -1,0 +1,46 @@
+# Exemple d'intégration GitHub Actions pour r3con — NE PAS activer tel quel
+# dans ce dépôt : copier ce fichier dans .github/workflows/ du projet audité.
+#
+# Principe de sécurité : aucune donnée sensible n'est téléversée
+# automatiquement. Les artefacts sont conservés seulement si le dépôt est
+# privé ou après revue humaine (voir docs « Limites »). Les analyses sont
+# 100 % hors-ligne ; aucun secret n'est requis par défaut.
+name: r3con supply-chain & audit
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"
+
+jobs:
+  r3con:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install r3con (offline analysis, no extras)
+        run: python -m pip install r3con
+      - name: Supply-chain scan (SBOM CycloneDX local uniquement)
+        run: |
+          r3con --no-color --no-banner supply-chain scan . \
+            --sbom cyclonedx --dependencies \
+            --report r3con-supply-chain.json --sbom-output sbom.cyclonedx.json
+      - name: Scan source code (fail-on HIGH en CI, revue humaine pour le reste)
+        run: |
+          r3con --no-color --no-banner scan ./src --profile source --fail-on high \
+            --json-output r3con-scan.json || [ "$?" = "2" ]
+      - name: Upload SBOM only (no raw findings by default)
+        uses: actions/upload-artifact@v4
+        with:
+          name: r3con-sbom
+          path: sbom.cyclonedx.json
+          retention-days: 14
+      # Décommenter pour publier les findings dans le résumé de PR :
+      # - name: Report summary
+      #   run: |
+      #     echo "## r3con" >> "$GITHUB_STEP_SUMMARY"
+      #     r3con --no-color --no-banner summarize r3con-scan.json >> "$GITHUB_STEP_SUMMARY"

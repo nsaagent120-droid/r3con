@@ -92,6 +92,41 @@ def dynamic_maps(binary_path):
 def dynamic_core(binary_path, core_path):
     console.print_json(json.dumps(DynamicAnalyzer(binary_path).analyze_core_dump(core_path), ensure_ascii=False))
 
+@dynamic_group.command("sandbox")
+@click.argument("target", type=click.Path(exists=True, dir_okay=False))
+@click.option("--arg", "args", multiple=True, help="Argument passé à la cible; répétable")
+@click.option("--input-file", type=click.Path(exists=True, dir_okay=False), help="Données envoyées sur stdin")
+@click.option("--stdin", "stdin_text", default=None, help="Texte envoyé sur stdin")
+@click.option("--timeout", default=10, type=click.IntRange(1, 300), show_default=True, help="Timeout mural (s)")
+@click.option("--cpu-sec", default=5, type=click.IntRange(1, 600), show_default=True)
+@click.option("--mem-mb", default=256, type=click.IntRange(16, 8192), show_default=True)
+@click.option("--max-procs", default=32, type=click.IntRange(1, 512), show_default=True)
+@click.option("--allow-network", is_flag=True, help="Autorise le réseau (laboratoire contrôlé uniquement)")
+@click.option("--lenient-network", is_flag=True, help="Exécute même si unshare -n est indisponible (averti)")
+@click.option("--strace", is_flag=True, help="Profil de syscalls si strace est installé")
+@click.option("--execute", is_flag=True, help="Exécuter réellement; sans ce drapeau, seul le plan est affiché")
+@click.option("--json-output", type=click.Path(dir_okay=False), help="Écrire le résultat JSON")
+def dynamic_sandbox(target, args, input_file, stdin_text, timeout, cpu_sec, mem_mb,
+                    max_procs, allow_network, lenient_network, strace, execute, json_output):
+    """Runner local isolé : réseau coupé, rlimits, tmp privé. Par défaut : PLAN uniquement."""
+    from modules.dynamic.sandboxed_runner import SandboxedRunner, SandboxLimits
+
+    limits = SandboxLimits(cpu_seconds=cpu_sec, memory_mb=mem_mb, wall_timeout_s=timeout,
+                           max_processes=max_procs, allow_network=allow_network,
+                           strict_network=not lenient_network, strace=strace)
+    runner = SandboxedRunner(target, args=list(args),
+                             stdin_data=stdin_text.encode() if stdin_text is not None else None,
+                             input_file=input_file, limits=limits)
+    result = runner.execute() if execute else runner.plan()
+    text = json.dumps(result, ensure_ascii=False, indent=2, default=str)
+    if json_output:
+        Path(json_output).parent.mkdir(parents=True, exist_ok=True)
+        Path(json_output).write_text(text, encoding="utf-8")
+    if not execute:
+        console.print("[yellow]Mode simulation : aucun processus lancé. Relancez avec --execute.[/yellow]")
+    console.print_json(text)
+
+
 @dynamic_group.command("watchpoint")
 @click.argument("binary_path", type=click.Path(exists=True, dir_okay=False))
 @click.argument("address")

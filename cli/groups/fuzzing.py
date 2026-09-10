@@ -14,18 +14,22 @@ Commands:
   fuzzing delete <name> [--workspace <ws>]
 """
 from __future__ import annotations
+
 import json
+import sys
 from pathlib import Path
+
 import click
+from rich import box
 from rich.panel import Panel
 from rich.table import Table
-from rich import box
-from .helpers import console, section, info, ok, warn
 
-import sys
+from .helpers import console, info, ok, section
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from core.fuzzing_manager import FuzzingManager, FUZZING_ENGINES
+from core.fuzzing_manager import FUZZING_ENGINES, FuzzingManager
+
 
 @click.group()
 def fuzzing():
@@ -100,7 +104,7 @@ def fuzz_create(name, target, engine, workspace_name, corpus_dir, output_dir, ta
             title=f"[bold green]Campagne créée: {name}[/]", border_style="green"
         ))
         ok(f"Corpus initial: {len(list(Path(campaign.corpus_dir).glob('*')))} fichiers")
-        info(f"Prochaines étapes:")
+        info("Prochaines étapes:")
         info(f"  r3con fuzzing stats {name}" + (f" --workspace {workspace_name}" if workspace_name else ""))
         info(f"  r3con fuzzing corpus {name} --generate 100 --strategy radamsa")
         info(f"  r3con fuzzing triage {name} (après fuzzing)")
@@ -307,8 +311,8 @@ def fuzz_corpus(name, workspace_name, generate, strategy, minimize):
     try:
         stats = mgr.get_stats(name, workspace=workspace_name)
         console.print(f"Corpus: {stats['corpus']} fichiers | Crashes: {stats['crashes']} | Hangs: {stats['hangs']}")
-        info(f"Utilise --generate 100 --strategy radamsa pour générer")
-        info(f"Utilise --minimize pour dédupliquer")
+        info("Utilise --generate 100 --strategy radamsa pour générer")
+        info("Utilise --minimize pour dédupliquer")
     except Exception as e:
         raise click.ClickException(str(e))
 
@@ -330,3 +334,73 @@ def fuzz_delete(name, workspace_name, force):
         ok(f"Campagne supprimée: {name}")
     except Exception as e:
         raise click.ClickException(str(e))
+
+@fuzzing.command("export-findings")
+@click.argument("name")
+@click.option("--workspace", "workspace_name", default=None)
+@click.option("--json-output", is_flag=True)
+def fuzz_export_findings(name, workspace_name, json_output):
+    """Exporte les crashs triés d'une campagne en findings r3con (contrat v2.1)."""
+    mgr = FuzzingManager()
+    try:
+        result = mgr.export_findings(name, workspace=workspace_name)
+    except FileNotFoundError as e:
+        raise click.ClickException(str(e))
+    if json_output:
+        click.echo(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+        return
+    section(f"EXPORT FINDINGS: {name}")
+    console.print(f"Clusters : {result['clusters']} | Occurrences : {result['occurrences']} | "
+                  f"Findings : {len(result['findings'])}")
+    for finding in result["findings"][:10]:
+        console.print(f"  [{finding['severity']}] {finding['type']} — {finding['description'][:90]}")
+    console.print("\n[dim]Rappel : un crash observé ≠ exploitabilité prouvée ; status = observation.[/dim]")
+
+
+@fuzzing.command("plan")
+@click.argument("name")
+@click.option("--timeout-ms", default=1000, show_default=True, type=click.IntRange(10, 600000))
+@click.option("--memory-mb", default=200, show_default=True, type=click.IntRange(16, 65536))
+@click.option("--max-runtime", default=0, show_default=True, type=click.IntRange(0, 86400),
+              help="Arrêt automatique après N secondes (0 = illimité)")
+@click.option("--resume/--no-resume", default=True, show_default=True,
+              help="Reprendre la campagne si l'état existe dans -o/--output")
+def fuzz_plan(name, timeout_ms, memory_mb, max_runtime, resume):
+    """Affiche la commande de fuzzing PLANIFIÉE avec limites (aucune exécution)."""
+    mgr = FuzzingManager()
+    try:
+        campaign = mgr.get_campaign(name)
+    except FileNotFoundError as e:
+        raise click.ClickException(str(e))
+    engine = campaign.engine
+    plan = None
+    if engine in ("afl", "afl++"):
+        from modules.fuzzing.adapters import AFLAdapter
+        plan = AFLAdapter(campaign.target).fuzz(campaign.corpus_dir, campaign.output_dir,
+                                                timeout_ms=timeout_ms, memory_mb=memory_mb,
+                                                max_runtime_s=max_runtime, resume=resume)
+    elif engine == "honggfuzz":
+        from modules.fuzzing.adapters import HonggfuzzAdapter
+        plan = HonggfuzzAdapter(campaign.target).fuzz(campaign.corpus_dir, campaign.output_dir,
+                                                      timeout_ms=timeout_ms, memory_mb=memory_mb,
+                                                      max_runtime_s=max_runtime)
+    elif engine == "libfuzzer":
+        cmd = [campaign.target, "-runs=0" if not max_runtime else f"-runs={max_runtime}",
+               f"-timeout={max(1, timeout_ms // 1000)}s", f"-rss_limit_mb={memory_mb}",
+               campaign.corpus_dir, f"-artifact_prefix={campaign.output_dir}/crashes/"]
+        if max_runtime:
+            cmd.insert(1, f"-max_total_time={max_runtime}")
+        plan = {"status": "ready", "engine": "libfuzzer", "argv": cmd,
+                "command": " ".join(cmd),
+                "note": "la cible doit être instrumentée (-fsanitize=fuzzer)"}
+    else:
+        raise click.ClickException(f"engine '{engine}' sans planneur intégré (radamsa: usage mutation seule)")
+    section(f"FUZZING PLAN: {name} ({engine})")
+    console.print(f"[bold]{plan.get('command', '')}[/bold]")
+    if plan.get("resumable"):
+        info("Reprise détectée : l'état existe déjà dans le dossier de sortie.")
+    for w in (plan.get("fallback"), plan.get("note")):
+        if w:
+            console.print(f"[dim]{w}[/dim]")
+    click.echo(json.dumps(plan, indent=2, ensure_ascii=False))
+
