@@ -141,3 +141,25 @@ def test_task_cache_oversized_result_skipped(tmp_path):
     from core.cache import TaskCache
     cache = TaskCache(cache_dir=tmp_path / "tc")
     assert cache.set("k" * 32, {"blob": "x" * 3_000_000}) is False
+
+
+def test_offline_killswitch_blocks_remote_lookups(tmp_path, monkeypatch):
+    import urllib.request
+    monkeypatch.setenv("R3CON_OFFLINE", "1")
+
+    def _boom(*a, **k):
+        raise AssertionError("requête réseau tentée en mode offline")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    from modules.malware.dynamic.virustotal import ThreatIntelManager
+    from modules.research.research import CVEMatcher
+    target = tmp_path / "x.bin"
+    target.write_bytes(b"MZ\x90\x00" + b"A" * 100)
+    ti = ThreatIntelManager(vt_api_key="cle-factice")
+    res = ti.check_file_hash(str(target))
+    assert res["status"] == "ok"
+    assert res["sources"]["virustotal"]["reason"] == "offline_mode"
+    assert res["sources"]["malwarebazaar"]["reason"] == "offline_mode"
+    assert res["remote"] == "disabled_offline"
+    assert res["sources"]["local_heuristic"]["status"]
+    assert CVEMatcher().fetch_cve_nvd("CVE-2021-44228")["reason"] == "offline_mode"

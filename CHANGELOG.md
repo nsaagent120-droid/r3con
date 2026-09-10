@@ -46,6 +46,9 @@
 - Aucune commande supprimée. Les payloads JSON existants gardent leurs clés (ajouts uniquement) ; `schema_version` des résultats passe de 2.0 à 2.1.
 - Les alias historiques (`type`, `provenance.corroborating_tools`, `finding["file"]/["line"]/["cwe"]`) restent acceptés à la lecture comme à l'écriture.
 - `--offline` et `--fail-on` sont des ajouts optionnels ; sans eux, comportement CLI strictement identique.
+- `--offline` pose le kill-switch global `R3CON_OFFLINE=1` : les lookup distants (VirusTotal,
+  MalwareBazaar, NVD) renvoient `skipped/offline_mode` sans émettre la moindre requête —
+  même l'envoi d'un hash est bloqué ; l'analyse locale et heuristique continue.
 
 ### Tests
 

@@ -63,6 +63,15 @@ Les alertes Bandit de faible sévérité liées à l’usage légitime de sous-p
   constitue pas une preuve ». Aucun contenu de cible n'est envoyé — seuls les
   champs déjà présents dans le rapport.
 
+## Kill-switch hors ligne (`core/offline.py`)
+
+- `--offline` sur `r3con scan` (ou la variable `R3CON_OFFLINE=1`, ou la clé
+  `analysis.offline` de la configuration) désactive **toutes** les intégrations
+  distantes : les lookup VirusTotal/MalwareBazaar/NVD renvoient
+  `skipped/offline_mode` sans émettre de requête. Aucun hash de fichier n'est
+  transmis lorsque le kill-switch est actif — c'était auparavant le comportement
+  silencieux de MalwareBazaar « sans authentification ».
+
 ## Différentiel, cache et reprise
 
 - `compare`/`reports compare` travaillent sur des fichiers locaux et n'écrivent
