@@ -11,7 +11,7 @@ hash de fichier — sans attendre que chaque module implémente son propre drape
 from __future__ import annotations
 
 import os
-from typing import Any, Dict
+from typing import Any
 
 _TRUTHY = {"1", "true", "yes", "on", "force"}
 
@@ -28,7 +28,7 @@ def is_offline() -> bool:
         return False
 
 
-def offline_payload(source: str) -> Dict[str, Any]:
+def offline_payload(source: str) -> dict[str, Any]:
     """Résultat normalisé 'skipped' pour une source distante désactivée."""
     return {
         "status": "skipped",
