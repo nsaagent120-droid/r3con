@@ -1,6 +1,6 @@
 # Changelog r3con
 
-## 7.3.0 — Contrat v2.1, orchestration explicable, supply chain et analyse différentielle (EN COURS DE VALIDATION — ne pas tagger sans feu vert)
+## 7.3.0 — Contrat v2.1, orchestration explicable, supply chain et analyse différentielle (publiée le 2026-09-10)
 
 ### Corrections bloquantes
 

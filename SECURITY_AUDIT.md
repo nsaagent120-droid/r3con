@@ -29,14 +29,13 @@ Les alertes Bandit de faible sévérité liées à l’usage légitime de sous-p
   l'exécution. Si le noyau/hôte ne permet pas cette isolation, l'exécution est
   **refusée** (status `network_isolation_unavailable`) sauf si l'opérateur pose
   explicitement `--lenient-network` — le refus n'est jamais silencieux.
-- Répertoire de travail temporaire privé (`0700`, `tempfile`),variables d'environnement non propagées
+- Répertoire de travail temporaire privé (`0700`, `tempfile`), variables d'environnement non propagées
   (liste blanche PATH/LANG/LC_ALL/TERM + HOME/TMPDIR redirigés), limites RLIMIT
   (CPU, mémoire, nombre de processus, taille de fichier), timeout mural avec
   suppression de l'arbre de processus, captures tronquées (1 Mo).
 - Les crashs observés deviennent des findings `observation`/`exploitability:
   unknown` : un crash n'est jamais présenté comme une exploitabilité prouvée.
-- Ce module ne lance que le binaire local fourni par l'opérateur. Aucune action
-  offensive distante, même en option.
+- Ce module ne lance que le binaire local fourni par l'opérateur.
 
 ## Supply chain (`modules/supply_chain/`)
 

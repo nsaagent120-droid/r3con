@@ -15,7 +15,7 @@ le plan d'analyse explicable avec reprise et cache versionné, l'analyse différ
 (manifestes/lockfiles, SBOM CycloneDX et SPDX, politique locale offline), un runner
 dynamique isolé (réseau coupé par défaut, limites de ressources, mode simulation),
 le triage de fuzzing exporté en findings et les commandes `explain`/`summarize`/`ask`.
-La release **7.2.0** reste la base stable validée ; 7.3.0 est en cours de validation. Elle fournit une base offline-first, des dépendances optionnelles par domaine, une CLI Click/Rich, des contrats de résultats normalisés et des tests de non-régression. Les résultats sont des indications d’analyse et doivent être vérifiés par un analyste qualifié. L’outil ne remplace pas une revue manuelle, un bac à sable isolé ou un avis professionnel.
+La release **7.3.0** (2026-09-10) est la version stable courante ; elle remplace la base 7.2.0. Elle fournit une base offline-first, des dépendances optionnelles par domaine, une CLI Click/Rich, des contrats de résultats normalisés et des tests de non-régression. Les résultats sont des indications d’analyse et doivent être vérifiés par un analyste qualifié. L’outil ne remplace pas une revue manuelle, un bac à sable isolé ou un avis professionnel.
 
 ## Capacités principales
 
