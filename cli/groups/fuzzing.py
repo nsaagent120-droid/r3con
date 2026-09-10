@@ -403,4 +403,3 @@ def fuzz_plan(name, timeout_ms, memory_mb, max_runtime, resume):
         if w:
             console.print(f"[dim]{w}[/dim]")
     click.echo(json.dumps(plan, indent=2, ensure_ascii=False))
-
