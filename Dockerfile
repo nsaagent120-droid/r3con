@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-LABEL name="r3con" version="7.2.0" description="r3con v7.2 stable offline-first security research toolkit"
+LABEL name="r3con" version="7.2.0" description="r3con v7.3.0 stable offline-first security research toolkit"
 
 # Install system dependencies for all domains
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -75,6 +75,6 @@ CMD ["--help"]
 # Labels for metadata
 LABEL org.opencontainers.image.title="r3con" \
       org.opencontainers.image.description="Unified offline-first security toolkit - Binary, Malware, Network, Web, Cloud, Container" \
-      org.opencontainers.image.version="7.2.0" \
+      org.opencontainers.image.version="7.3.0" \
       org.opencontainers.image.authors="r3con contributors" \
       org.opencontainers.image.source="https://github.com/nsaagent120-droid/r3con"

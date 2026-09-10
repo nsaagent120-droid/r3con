@@ -3,6 +3,8 @@ r3con v7.2 - Web Dashboard PRO v2 - WebSocket Real-time + ML + All domains
 Real-time updates via Flask-SocketIO with polling fallback
 """
 from __future__ import annotations
+
+from core.__version__ import __version__
 from flask import Flask, render_template_string, jsonify, request
 import json
 import os
@@ -709,7 +711,7 @@ def create_app_v2(data_provider=None):
     def health():
         return jsonify({
             "status": "ok",
-            "version": "7.2.0-PRO-RealTime",
+            "version": f"{__version__}-PRO-RealTime",
             "websocket": SOCKETIO_AVAILABLE,
             "domains": ["binary", "malware", "network", "web", "cloud", "container", "secrets", "decompiler", "ai", "reporting"],
             "realtime": realtime_stats,

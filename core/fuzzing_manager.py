@@ -578,3 +578,42 @@ class FuzzingManager:
             "kept": kept,
             "total": kept,
         }
+
+
+    # ── v7.3 : export des crashs vers le contrat Finding r3con ──────
+
+    def export_findings(self, campaign_name: str, workspace: Optional[str] = None) -> Dict[str, Any]:
+        """Convertit les crashs triés d'une campagne en findings normalisés.
+
+        Les clusters de crashs restent des OBSERVATIONS (status
+        ``observation``, exploitabilité ``unknown``) : un crash reproduit n'est
+        pas une preuve d'exploitabilité. Écriture locale uniquement.
+        """
+        from core.result_schema import make_result
+        from modules.fuzzing.triage import cluster_crashes, crashes_to_findings, parse_fuzzer_stats
+
+        campaign = self.get_campaign(campaign_name, workspace=workspace)
+        camp_dir = Path(campaign.output_dir)
+        crashes_dir = camp_dir / "crashes"
+        clusters = cluster_crashes(crashes_dir) if crashes_dir.is_dir() else []
+        findings = crashes_to_findings(clusters, campaign.target,
+                                       tool=campaign.engine, campaign=campaign.name)
+        stats = parse_fuzzer_stats(camp_dir)
+        payload = {
+            "schema_version": "2.1",
+            "campaign": campaign_name,
+            "target": campaign.target,
+            "engine": "fuzzing-triage",
+            "fuzzer_engine": campaign.engine,
+            "clusters": len(clusters),
+            "occurrences": sum(c["occurrences"] for c in clusters),
+            "stats": stats,
+            "findings": findings,
+        }
+        try:
+            (camp_dir / "findings.json").write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        except OSError as exc:
+            self.last_error = f"export_findings write failed: {exc}"
+        status = "ok" if clusters else "partial"
+        return make_result(status, **payload)

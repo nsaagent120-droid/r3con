@@ -1,4 +1,4 @@
-# Guide utilisateur r3con 7.2.0
+# Guide utilisateur r3con 7.3.0
 
 ## 1. Positionnement et limites
 
@@ -260,6 +260,113 @@ python -m twine check dist/*
 ```
 
 La release est considérée saine lorsque les tests obligatoires passent, les outils optionnels absents sont signalés et aucun secret n’est présent dans les artefacts ou les logs.
+
+## 19. Nouveaux workflows v7.3
+
+### 19.1 Scan adaptatif explicable, reprise et porte de sévérité
+
+```bash
+r3con scan TARGET --profile auto --explain-plan     # détection + profil + justification
+r3con scan TARGET --plan-only                       # plan détaillé, aucun module exécuté
+r3con scan TARGET --resume ~/.cache/r3con/runs/<run_id>   # reprendre un run interrompu
+r3con scan TARGET --offline                         # aucune intégration distante
+r3con scan TARGET --fail-on high --json-out r.json  # exit 2 si un finding HIGH+ subsiste
+```
+
+Le plan explique pour chaque tâche : l’outil utilisé, sa disponibilité, le repli
+interne éventuel et le conseil d’installation. Les tâches dont l’outil externe
+est absent et sans repli sont **ignorées proprement** (`unsupported`, raison
+`tool_unavailable`) et n’échouent pas l’analyse. Les résultats sont mis en cache
+par (hash de cible, profil, configuration, versions d’outils, version du
+contrat) : modifier l’un de ces éléments invalide uniquement les entrées
+concernées.
+
+### 19.2 Diagnostic étendu
+
+```bash
+r3con tools doctor --json-output doctor.json
+```
+
+Affiche les outils système, leurs versions détectées, les bibliothèques Python
+optionnelles et le nombre de fallbacks actifs.
+
+### 19.3 Analyse différentielle
+
+```bash
+r3con reports compare OLD.json NEW.json                    # ajoutés / supprimés / modifiés
+r3con reports compare OLD.json NEW.json --format md --output diff.md
+r3con compare ./v1.0.elf ./v1.1.elf --kind binary          # protections, fonctions, strings
+r3con compare ./app-v1.apk ./app-v2.apk                    # permissions et findings
+r3con compare OLD NEW --format sarif --output diff.sarif
+```
+
+`compare` détecte les findings ajoutés/supprimés/modifiés, les fonctions
+modifiées, les permissions Android, les nouveaux secrets (cibles sources) et
+les changements de protections. Sorties JSON, Markdown et SARIF, déterministes.
+
+### 19.4 Chaîne d’approvisionnement (SBOM offline)
+
+```bash
+r3con supply-chain scan ./project --sbom cyclonedx --dependencies --secrets --report supply-chain.json
+r3con supply-chain scan ./project --sbom spdx --sbom-output sbom.spdx.json
+r3con supply-chain scan ./project --policy ./ma-politique.json --fail-on high
+```
+
+Écosystèmes : Python, npm, Java/Kotlin (Maven/Gradle), Go, Rust, Docker,
+Kubernetes, Terraform. Les versions proviennent des lockfiles quand ils
+existent (dépendances transitives incluses). **Aucun fichier n’est envoyé vers
+un service distant** ; la détection de vulnérabilités utilise une politique
+locale (amorces intégrées + votre fichier `--policy`). Les findings de
+vulnérabilité sont marqués `hypothesis` : confirmez-les avec votre base d’avis.
+
+### 19.5 Analyse dynamique isolée
+
+```bash
+r3con dynamic sandbox ./target-bin --arg input1                 # PLAN uniquement (défaut)
+r3con dynamic sandbox ./target-bin --input-file poc.bin --execute
+r3con dynamic sandbox ./target-bin --execute --mem-mb 512 --cpu-sec 5 --timeout 10 --strace
+```
+
+Par défaut : aucun processus lancé (mode simulation), réseau coupé
+(`unshare -n`, exécution refusée si le noya n’autorise pas l’isolation et que
+`--lenient-network` n’est pas posé), répertoire temporaire privé `0700`,
+limites RLIMIT CPU/mémoire/processus/taille de fichier, capture bornée
+(stdout/stderr, fichiers créés, signaux de crash, syscalls si strace existe).
+
+### 19.6 Fuzzing : triage, corpus et export
+
+```bash
+r3con fuzzing plan CAMPAGNE --timeout-ms 1500 --memory-mb 128 --max-runtime 3600
+r3con fuzzing export-findings CAMPAGNE --json-output findings.json
+```
+
+`plan` construit la commande AFL++/honggfuzz/libFuzzer **avec limites de
+ressources et détection de reprise**, sans rien exécuter. `export-findings`
+regroupe les crashs par signature, les convertit en findings (statut
+`observation`, exploitabilité `unknown`) et écrit localement `findings.json`
+dans le dossier de campagne. La minimisation de corpus écrit dans un dossier
+`.min` séparé, sans jamais modifier le corpus d’origine.
+
+### 19.7 Expliquer, résumer, interroger
+
+```bash
+r3con explain FINDING_ID --report r.json            # citations + incertitudes
+r3con explain FINDING_ID --report r.json --format json --ai
+r3con summarize r.json --json
+r3con ask r.json "Quels risques sont corroborés par plusieurs outils ?"
+```
+
+Ces commandes sont calculées localement à partir du rapport uniquement :
+chaque réponse cite les evidences utilisées et liste les incertitudes
+(confiance faible, fallback, statut hypothèse). L’option `--ai` n’ajoute
+qu’un commentaire explicitement étiqueté « non probant » si un fournisseur
+est configuré ; sans fournisseur, la réponse locale reste complète.
+
+### 19.8 Intégration CI
+
+Un gabarit GitHub Actions sans exfiltration est fourni dans
+`examples/github-actions/r3con-scan.yml` (SBOM téléversé par défaut, findings
+uniquement en résumé de PR si vous le décommentez).
 
 [1]: https://docs.python.org/3/library/venv.html "Documentation Python venv"
 [2]: https://sarifweb.azurewebsites.net/ "SARIF specification"

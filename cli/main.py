@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-r3con v7.2.0 Titan-Omega - Modular CLI PRO
+r3con v7.x Titan-Omega - Modular CLI PRO
 Lean main.py that imports groups - efficace, utile, puissant
 
 Structure v6.0 (clean):
@@ -111,7 +111,11 @@ from cli.groups.workspace import workspace as workspace_group
 from cli.groups.fuzzing import fuzzing as fuzzing_group
 from cli.groups.agent import agent as agent_group
 from cli.groups.exploit import exploit as exploit_group
-from cli.groups.power import scan_command, doctor_command, reports_group
+from cli.groups.supply import supply_chain_group
+from cli.groups.power import (
+    scan_command, doctor_command, reports_group,
+    compare_command, explain_command, summarize_command, ask_command,
+)
 from cli.groups.interactive import (
     r2_command, gdb_command,
     session_cmd, plugins_group, interactive_mode
@@ -173,8 +177,13 @@ cli.add_command(fuzzing_group)
 cli.add_command(agent_group)
 cli.add_command(exploit_group)
 cli.add_command(scan_command)
+cli.add_command(supply_chain_group)
 cli.add_command(doctor_command, name="tools-doctor")
 cli.add_command(reports_group)
+cli.add_command(compare_command)
+cli.add_command(explain_command)
+cli.add_command(summarize_command)
+cli.add_command(ask_command)
 tools.add_command(doctor_command)
 
 # Direct commands

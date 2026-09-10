@@ -12,9 +12,12 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
+from core.__version__ import __version__ as CACHE_VERSION  # une release = un cache invalidé
+
 CACHE_DIR = Path.home() / ".r3con" / "cache"
 CACHE_FILE = CACHE_DIR / "analysis_cache.json"
-CACHE_VERSION = "7.2.0"
+# Empreinte du contrat de résultat : invalider le cache quand le schéma change.
+SCHEMA_KEY_VERSION = "result-2.1"
 CACHE_SCHEMA = 2
 MAX_ENTRIES = 5000
 DEFAULT_TTL_DAYS = 7
@@ -351,3 +354,93 @@ class IncrementalCache:
             "max_entries": self.max_entries,
             "last_error": self.last_error,
         }
+
+
+class TaskCache:
+    """Cache de tâches versionné pour l'orchestrateur.
+
+    Clé = sha256(hash_cible | tâche | profil | empreinte_config | empreinte_outils
+    | version du schéma de résultat). Une modification de configuration, de
+    version d'outil externe ou de contrat invalide donc exactement les entrées
+    concernées, sans toucher aux autres. Stockage local (répertoire fourni),
+    jamais de réseau.
+    """
+
+    def __init__(self, cache_dir: 'str | Path | None' = None, ttl_days: int = DEFAULT_TTL_DAYS,
+                 max_entries: int = MAX_ENTRIES):
+        base = Path(cache_dir) if cache_dir else CACHE_DIR
+        self.dir = base / "tasks"
+        self.last_error: Optional[str] = None
+        self.hits = 0
+        self.misses = 0
+        self.ttl_seconds = ttl_days * 86400
+        self.max_entries = max_entries
+
+    @staticmethod
+    def fingerprint(target_hash: str, task: str, profile: str, config_fingerprint: str,
+                     tool_fingerprint: str) -> str:
+        parts = (SCHEMA_KEY_VERSION, target_hash, task, profile, config_fingerprint, tool_fingerprint)
+        return hashlib.sha256("|".join(str(p) for p in parts).encode("utf-8")).hexdigest()
+
+    def _path(self, key: str) -> Path:
+        return self.dir / f"{key[:2]}" / f"{key[2:]}.json"
+
+    def get(self, key: str) -> Optional[dict]:
+        """Retourne le résultat caché, ou None (absence, TTL ou écriture partielle)."""
+        try:
+            path = self._path(key)
+            if not path.is_file():
+                self.misses += 1
+                return None
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if time.time() - payload.get("stored_at", 0) > self.ttl_seconds:
+                self.misses += 1
+                return None
+            self.hits += 1
+            return payload.get("result")
+        except (OSError, ValueError) as exc:
+            self.last_error = f"task cache read failed: {exc}"
+            self.misses += 1
+            return None
+
+    def set(self, key: str, result: dict) -> bool:
+        """Écrit atomiquement un résultat dans le cache ; renvoie False si ignoré."""
+        try:
+            blob = json.dumps(result, ensure_ascii=False, default=str)
+            if len(blob) > 2 * 1024 * 1024:  # garde-fou: on ne cache pas les très gros résultats
+                return False
+            self.dir.mkdir(parents=True, exist_ok=True)
+            path = self._path(key)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix="tc_", suffix=".tmp")
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                    json.dump({"key": key, "stored_at": time.time(), "result": result}, fh,
+                              ensure_ascii=False, default=str)
+                os.rename(tmp_path, path)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+            self._trim()
+            return True
+        except (OSError, ValueError, TypeError) as exc:
+            self.last_error = f"task cache write failed: {exc}"
+            return False
+
+    def _trim(self) -> None:
+        try:
+            files = sorted(self.dir.rglob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            for stale in files[self.max_entries:]:
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
+    def stats(self) -> dict:
+        return {"hits": self.hits, "misses": self.misses, "dir": str(self.dir),
+                "last_error": self.last_error}

@@ -9,15 +9,42 @@ import hashlib
 import json
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.result_schema import Status, make_result, deduplicate_findings, normalize_findings
+from core.result_schema import (
+    SCHEMA_VERSION,
+    Status,
+    make_result,
+    deduplicate_findings,
+    normalize_findings,
+)
 from core.config_manager import ConfigManager, get_config
 from core.pipeline import Pipeline, create_unified_pipeline, create_binary_pipeline, create_firmware_pipeline
 
 from modules.disasm.binary_parser import BinaryParser
 from modules.integration.tool_manager import ToolManager
+
+# Tâches externes -> (outil requis, repli interne éventuel). Sert au
+# pré-vérificateur de disponibilité et à l'explication du plan.
+EXTERNAL_TASKS = {
+    "checksec": {"tool": "checksec", "fallback": "protections",
+                 "reason": "protections binaires (outil spécialisé)"},
+    "ropper": {"tool": "ropper", "fallback": None,
+               "reason": "gadgets ROP via ropper"},
+    "one_gadget": {"tool": "one_gadget", "fallback": None,
+                   "reason": "one-gadget RCE"},
+    "r2": {"tool": "r2", "fallback": None, "reason": "désassemblage/analyse radare2"},
+    "ghidra": {"tool": "ghidra", "fallback": None, "reason": "décompilation Ghidra"},
+    "binwalk": {"tool": "binwalk", "fallback": "firmware_identify",
+                "reason": "extraction/signature firmware via binwalk"},
+    "jadx": {"tool": "jadx", "fallback": None, "reason": "désassemblage DEX"},
+    "apktool": {"tool": "apktool", "fallback": None, "reason": "décodage manifeste APK"},
+    "tshark": {"tool": "tshark", "fallback": "network_internal",
+               "reason": "décodage protocol via tshark"},
+    "zeek": {"tool": "zeek", "fallback": None, "reason": "logs réseau Zeek"},
+}
 
 
 class UnifiedOrchestrator:
@@ -36,11 +63,15 @@ class UnifiedOrchestrator:
                  config_path: Optional[str] = None,
                  config: Optional[ConfigManager] = None,
                  use_pipeline: bool = True,
+                 explain_only: bool = False,
+                 resume_dir: Optional[str] = None,
                  **overrides):
 
         self.path = Path(target)
         self.profile = profile
         self.use_pipeline = use_pipeline
+        self.explain_only = explain_only
+        self.resume_dir = Path(resume_dir) if resume_dir else None
         self.overrides = overrides
 
         # Config puissante
@@ -71,6 +102,9 @@ class UnifiedOrchestrator:
         self.tool_manager = ToolManager(config=self.config.to_dict())
         self.target_hash = None
         self.started = time.time()
+        self._cache_error: Optional[str] = None
+        self._plan_completed: Dict[str, bool] = {}
+        self._tools_fp: Optional[str] = None
 
     def run(self) -> Dict[str, Any]:
         """Run unifié - efficace avec pipeline ou fallback classic."""
@@ -83,13 +117,22 @@ class UnifiedOrchestrator:
             return make_result(Status.INVALID, target=str(self.path),
                                error="target_too_large", max_bytes=self.max_bytes)
 
-        # Target info avancé
-        target_info = self._target_info()
+        # Target info avancé — une cible illisible (permission, IO) produit
+        # un résultat structuré, jamais une exception.
+        try:
+            target_info = self._target_info()
+        except PermissionError as exc:
+            return make_result(Status.ERROR, target=str(self.path),
+                               error="permission_denied", detail=str(exc)[:200])
+        except OSError as exc:
+            return make_result(Status.ERROR, target=str(self.path),
+                               error=f"read_failed: {type(exc).__name__}", detail=str(exc)[:200])
         self.target_hash = target_info.get("sha256")
         run_id = f"{self.target_hash[:12]}-{int(time.time())}"
 
         # Artifacts
-        artifact_dir = Path(os.environ.get("R3CON_ARTIFACT_DIR", str(self.cache_dir / "runs"))) / run_id
+        artifact_dir = self.resume_dir or Path(os.environ.get(
+            "R3CON_ARTIFACT_DIR", str(self.cache_dir / "runs"))) / run_id
         try:
             artifact_dir.mkdir(parents=True, exist_ok=True)
         except OSError:
@@ -97,13 +140,119 @@ class UnifiedOrchestrator:
 
         # Profile selection
         profile = self._select_profile(target_info)
-        plan = self._build_plan(profile, target_info)
+        full_plan = self._build_plan(profile, target_info)
+        plan_details, unavailable = self._explain_plan(full_plan, profile, target_info)
+        plan = list(full_plan)
 
-        # Execute via pipeline (efficace) ou classic
-        if self.use_pipeline:
-            results = self._execute_via_pipeline(plan, target_info)
-        else:
-            results = self._execute_classic(plan, target_info)
+        # Mode explication uniquement : aucun module n'est exécuté.
+        if self.explain_only:
+            return make_result(
+                Status.OK, target=target_info, profile=profile, plan=plan,
+                plan_details=plan_details, explain_only=True,
+                warnings=unavailable, tool_inventory=self.tool_manager.inspect(),
+                tool_summary=self.tool_manager.summary(),
+                schema=SCHEMA_VERSION,
+            )
+
+        # Reprise : réutiliser les résultats des tâches déjà terminées.
+        results: Dict[str, Any] = {}
+        if self.resume_dir:
+            results = self._load_resume_state(self.resume_dir, plan)
+            plan = [t for t in plan if t not in results]
+        self._plan_completed = dict.fromkeys(results, True)
+
+        # Cache versionné (hash cible + profil + config + versions d'outils).
+        task_cache = None
+        if self.cache_enabled and self.resume_dir is None:
+            try:
+                from core.cache import TaskCache
+                task_cache = TaskCache(cache_dir=self.cache_dir / "tasks")
+                fp_config = self._config_fingerprint(profile)
+                fp_tools = self._tools_fingerprint()
+                cached_results: Dict[str, Any] = {}
+                for task in plan:
+                    key = TaskCache.fingerprint(self.target_hash, task, profile, fp_config, fp_tools)
+                    cached = task_cache.get(key)
+                    if isinstance(cached, dict):
+                        cached = dict(cached)
+                        cached["cache"] = {"hit": True, "key": key[:16]}
+                        cached_results[task] = cached
+                cached_tasks = set(cached_results)
+                results.update(cached_results)
+                plan = [t for t in plan if t not in cached_tasks]
+            except Exception as exc:  # noqa: BLE001 - le cache ne doit jamais casser l'analyse
+                self._cache_error = str(exc)[:300]
+                task_cache = None
+
+        # Les tâches dont l'outil externe est absent SANS repli interne sont
+        # marquées unsupported AVANT exécution (aucune erreur tardive) ; celles
+        # avec repli sont exécutées puis, en cas d'échec, remplacées par le
+        # résultat du moteur interne local (résultat explicitement marqué
+        # « fallback »).
+        fallback_for = {d["task"]: d["fallback"] for d in plan_details if d.get("fallback")}
+        executed_plan = [t for t in plan if t not in unavailable]
+        for task in unavailable:
+            if task in results:  # déjà fourni par reprise/cache : on n'écrase pas
+                continue
+            entry = next((d for d in plan_details if d["task"] == task), None)
+            results[task] = make_result(
+                Status.UNSUPPORTED, engine=task, error="tool_unavailable",
+                tool=(entry or {}).get("tool"),
+                install_hint=(entry or {}).get("install_hint"),
+                reason="outil externe absent et aucun repli interne disponible",
+            )
+
+        # Exécution via pipeline (efficace) ou classic — une tâche qui
+        # échoue n'interrompt jamais les autres.
+        if executed_plan:
+            try:
+                if self.use_pipeline:
+                    exec_results = self._execute_via_pipeline(executed_plan, target_info)
+                else:
+                    exec_results = self._execute_classic(executed_plan, target_info)
+            except Exception as exc:  # noqa: BLE001 - l'orchestrateur survit à tout
+                exec_results = {task: make_result(Status.ERROR, engine=task,
+                                                   error=f"orchestrator_failure: {exc}"[:500])
+                                for task in executed_plan}
+            for task in executed_plan:
+                result = exec_results.get(task) or make_result(
+                    Status.ERROR, engine=task, error="task_produced_no_result")
+                if isinstance(result, dict) and result.get("status") in (
+                        Status.ERROR.value, Status.UNSUPPORTED.value, Status.TIMEOUT.value
+                ) and fallback_for.get(task):
+                    fb = fallback_for[task]
+                    fb_result = self._task(fb, target_info)
+                    if isinstance(fb_result, dict) and fb_result.get("status") == Status.OK.value:
+                        fb_result = dict(fb_result)
+                        fb_result["fallback"] = True
+                        prov = dict(fb_result.get("provenance") or {})
+                        prov.update({"fallback": True, "fallback_of": task,
+                                     "missing_tool": EXTERNAL_TASKS.get(task, {}).get("tool", task)})
+                        fb_result["provenance"] = prov
+                        fb_result["fallback_reason"] = f"outil '{task}' indisponible ; repli interne '{fb}'"
+                        result = fb_result
+                results[task] = result
+
+        # Alimentation du cache + persistance de l'état pour la reprise.
+        if task_cache is not None:
+            fp_config = self._config_fingerprint(profile)
+            fp_tools = self._tools_fingerprint()
+            for task, result in results.items():
+                if isinstance(result, dict) and result.get("status") in (Status.OK.value, Status.PARTIAL.value) \
+                        and not result.get("cache"):
+                    key = TaskCache.fingerprint(self.target_hash, task, profile, fp_config, fp_tools)
+                    task_cache.set(key, result)
+        if artifact_dir:
+            try:
+                state = {"run_id": run_id, "target": str(self.path), "profile": profile,
+                         "target_hash": self.target_hash, "plan": list(results),
+                         "completed": sorted(t for t, r in results.items()
+                                             if isinstance(r, dict) and r.get("status") == Status.OK.value),
+                         "finished_utc": datetime.now(timezone.utc).isoformat()}
+                (artifact_dir / "state.json").write_text(
+                    json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+            except OSError:
+                pass
 
         # Findings
         findings = self._collect_findings(results)
@@ -120,8 +269,11 @@ class UnifiedOrchestrator:
                 except (OSError, TypeError):
                     pass
 
-        # Status
-        statuses = [x.get("status") for x in results.values() if isinstance(x, dict)]
+        # Status — les sauts « tool_unavailable » sont des limites documentées,
+        # pas des échecs : ils n'empêchent pas un statut global « ok ».
+        statuses = [x.get("status") for x in results.values() if isinstance(x, dict)
+                    and not (x.get("status") == Status.UNSUPPORTED.value
+                             and x.get("error") == "tool_unavailable")]
         if statuses and all(s == Status.OK.value for s in statuses):
             overall = Status.OK.value
         elif statuses and all(s in (Status.ERROR.value, Status.INVALID.value) for s in statuses):
@@ -129,13 +281,29 @@ class UnifiedOrchestrator:
         else:
             overall = Status.PARTIAL.value
 
+        fallbacks_used = sorted(
+            task for task, result in results.items()
+            if isinstance(result, dict) and (result.get("fallback")
+                                             or (result.get("provenance") or {}).get("fallback_of"))
+        )
+        warnings = list(unavailable) if isinstance(unavailable, list) else []
+        cache_hits = sorted(t for t, r in results.items() if isinstance(r, dict) and r.get("cache"))
+
         return make_result(
             overall,
             target=target_info,
             profile=profile,
-            plan=plan,
+            plan=full_plan,
+            executed_plan=plan,
+            plan_details=plan_details,
             results=results,
             findings=findings,
+            fallbacks_used=fallbacks_used,
+            cache_stats={**({"hits": len(cache_hits), "hit_tasks": cache_hits,
+                             "error": getattr(self, "_cache_error", None)} if task_cache else
+                            {"hits": 0, "enabled": False})},
+            resumed_tasks=sorted(self._plan_completed) if self.resume_dir else [],
+            warnings=warnings,
             tool_inventory=self.tool_manager.inspect(),
             tool_summary=self.tool_manager.summary(),
             config_snapshot={
@@ -165,84 +333,28 @@ class UnifiedOrchestrator:
         )
 
     def _target_info(self) -> Dict[str, Any]:
-        """Détection cible avancée et efficace."""
+        """Détection cible via le classifieur unifié (offline, stdlib)."""
 
         h = hashlib.sha256()
         with self.path.open("rb") as fh:
             for chunk in iter(lambda: fh.read(1024 * 1024), b""):
                 h.update(chunk)
 
-        try:
-            file_data = self.path.read_bytes()[:8192]
-            full_size = self.path.stat().st_size
-        except Exception:
-            file_data = b""
-            full_size = 0
+        from core.target_types import detect_target, human_description
 
-        magic = file_data[:16]
-        kind = "unknown"
-        confidence = 0.0
-        details = {"size": full_size}
-
-        # ELF
-        if magic.startswith(b"\x7fELF"):
-            data = file_data[:32]
-            machine = int.from_bytes(data[18:20], "little") if len(data) >= 20 else 0
-            if len(data) >= 20 and data[4] in (1, 2) and data[5] in (1, 2) and machine in {3, 8, 20, 21, 40, 62, 183, 243}:
-                kind = "binary"
-                confidence = 0.95
-                details["elf_machine"] = machine
-            else:
-                kind = "firmware"
-                confidence = 0.6
-
-        # ELF embedded
-        elif b"\x7fELF" in file_data and full_size > 1024:
-            kind = "firmware"
-            confidence = 0.8
-            details["elf_embedded"] = True
-
-        # APK
-        elif magic.startswith(b"PK\x03\x04"):
-            if b"AndroidManifest.xml" in file_data or b"classes.dex" in file_data:
-                kind = "apk"
-                confidence = 0.95
-            else:
-                kind = "archive"
-                confidence = 0.6
-
-        # PE/MachO
-        elif magic.startswith(b"MZ") or magic.startswith((b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf")):
-            kind = "binary"
-            confidence = 0.9
-
-        # PCAP
-        elif magic[:4] in (b"\xd4\xc3\xb2\xa1", b"\xa1\xb2\xc3\xd4") or magic[:4] == b"\x0a\x0d\x0d\x0a":
-            kind = "network"
-            confidence = 0.95
-
-        # Source
-        elif self.path.suffix.lower() in {".c", ".h", ".cpp", ".py", ".go", ".rs", ".java", ".js", ".php"}:
-            kind = "source"
-            confidence = 0.9
-
-        # Firmware fallback
-        elif any(ind in file_data.lower() for ind in [b"squashfs", b"uboot", b"busybox", b"jffs2"]):
-            kind = "firmware"
-            confidence = 0.75
-
-        else:
-            kind = "firmware" if full_size > 1024*1024 else "binary"
-            confidence = 0.4
-
+        detected = detect_target(self.path)
+        full_size = self.path.stat().st_size
         return {
             "path": str(self.path),
             "sha256": h.hexdigest(),
             "size": full_size,
             "size_human": self._human_size(full_size),
-            "kind": kind,
-            "confidence": confidence,
-            "details": details,
+            "kind": detected.kind,
+            "types": detected.types,
+            "confidence": detected.confidence,
+            "indicators": detected.indicators,
+            "description": human_description(detected),
+            "details": detected.details,
         }
 
     def _select_profile(self, target_info: Dict) -> str:
@@ -255,6 +367,7 @@ class UnifiedOrchestrator:
             "network": "network",
             "source": "source",
             "archive": "firmware",
+            "container": "firmware",
         }.get(target_info.get("kind", "unknown"), "deep")
 
     def _build_plan(self, profile: str, target_info: Dict) -> List[str]:
@@ -313,6 +426,106 @@ class UnifiedOrchestrator:
                 deduped.append(t)
 
         return deduped
+
+    # ── Explication du plan, pré-vérification des outils ────────────
+
+    def _explain_plan(self, plan: List[str], profile: str,
+                      target_info: Dict[str, Any]) -> "tuple[List[Dict[str, Any]], List[str]]":
+        """Construit un plan explicable et la liste des tâches à sauter.
+
+        Chaque entrée explique POURQUOI la tâche est là, l'outil utilisé, sa
+        disponibilité et le repli interne éventuel. Les tâches dont l'outil
+        externe est absent et sans repli reviennent dans ``unavailable``.
+        """
+        from core.target_types import KIND_BINARY
+
+        details: List[Dict[str, Any]] = []
+        unavailable: List[str] = []
+        detected = ", ".join(target_info.get("types") or [target_info.get("kind", "unknown")])
+        for task in plan:
+            spec = EXTERNAL_TASKS.get(task)
+            entry: Dict[str, Any] = {
+                "task": task,
+                "reason": spec["reason"] if spec else "analyse interne r3con",
+                "tool": spec["tool"] if spec else "r3con",
+                "tool_available": True,
+                "fallback": None,
+                "profile": profile,
+                "target_types": detected,
+                "timeout": self.timeout,
+            }
+            if spec:
+                present = self.tool_manager.is_available(spec["tool"])
+                entry["tool_available"] = bool(present)
+                entry["install_hint"] = self._install_hint(spec["tool"])
+                if not present:
+                    if spec["fallback"] and spec["fallback"] in plan:
+                        entry["fallback"] = spec["fallback"]
+                        entry["note"] = (f"outil '{spec['tool']}' absent : repli interne "
+                                         f"'{spec['fallback']}' utilisé si l'adaptateur échoue")
+                    else:
+                        unavailable.append(task)
+                        entry["skipped"] = True
+                        entry["note"] = f"outil '{spec['tool']}' absent et sans repli : tâche ignorée"
+            if task == "checksec" and target_info.get("kind") != KIND_BINARY:
+                entry["note"] = (entry.get("note", "") + " ; cible non-ELF/PE : checksec peu pertinent").strip(" ;")
+            details.append(entry)
+        return details, unavailable
+
+    def _install_hint(self, tool_key: str) -> str:
+        try:
+            spec = self.tool_manager.by_key.get(tool_key)
+            packages = getattr(spec, "packages", None) if spec is not None else None
+            if packages:
+                mgr, pkg = sorted(packages.items())[0]
+                return f"installez via {mgr}: {pkg} (optionnel ; r3con reste fonctionnel sans)"
+        except Exception:  # noqa: BLE001
+            pass
+        return f"outil optionnel '{tool_key}' absent ; installez-le pour enrichir l'analyse"
+
+    def _config_fingerprint(self, profile: str) -> str:
+        """Empreinte stable des options qui influencent les résultats."""
+        cfg = self.config.to_dict() if hasattr(self.config, "to_dict") else {}
+        relevant = {
+            "profile": profile,
+            "timeout": self.timeout,
+            "workers": self.max_workers,
+            "max_file_mb": self.max_bytes // (1024 * 1024),
+            "limits": (cfg.get("limits") or {}),
+            "analysis": (cfg.get("analysis") or {}),
+            "enabled_tools": sorted((cfg.get("external_tools") or {}).get("enabled", {}).items()
+                                    if isinstance((cfg.get("external_tools") or {}).get("enabled"), dict) else []),
+        }
+        blob = json.dumps(relevant, sort_keys=True, default=str, ensure_ascii=False)
+        return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+    def _tools_fingerprint(self) -> str:
+        try:
+            rows = self.tool_manager.inspect()
+            pairs = sorted((f"{r.get('key')}={r.get('version') or 'present' if r.get('present') else '-'}"
+                            for r in rows if isinstance(r, dict)))
+            blob = json.dumps(pairs, ensure_ascii=False)
+            return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+        except Exception:  # noqa: BLE001 - inspect peut échouer sur config exotique
+            return "unknown"
+
+    def _load_resume_state(self, resume_dir: Path, plan: List[str]) -> Dict[str, Any]:
+        """Reprend une exécution interrompue depuis les artifacts d'un run."""
+        reused: Dict[str, Any] = {}
+        for task in plan:
+            candidate = resume_dir / f"{task}.json"
+            if not candidate.is_file():
+                continue
+            try:
+                payload = json.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(payload, dict) and payload.get("status") in (Status.OK.value, Status.PARTIAL.value):
+                payload = dict(payload)
+                payload["resumed"] = True
+                reused[task] = payload
+        return reused
+
 
     def _execute_via_pipeline(self, plan: List[str], target_info: Dict) -> Dict[str, Any]:
         """Exécution via pipeline efficace."""

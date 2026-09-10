@@ -205,6 +205,11 @@ class CVEMatcher:
         if not _validate_cve_id(cve_id):
             return {"id": str(cve_id)[:20], "description": "Invalid CVE ID format", "cvss": 0.0, "pattern": "", "status": "error", "error": "invalid_cve_format"}
 
+        from core.offline import is_offline
+        if is_offline():
+            return {"id": cve_id, "status": "unavailable", "reason": "offline_mode",
+                    "description": "NVD inaccessible en mode hors ligne", "cvss": 0.0, "pattern": ""}
+
         global _last_nvd_call
         # Rate limiting
         now = time.time()

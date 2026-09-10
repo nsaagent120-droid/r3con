@@ -1503,3 +1503,74 @@ __codename__ = "Titan-Omega-Full-Rival-Plus-RealTime-ML"
 *Manuel technique généré par r3con v7.2 — 2026-09-09 — 100% offline-first unified security toolkit*
 *Pour pentest rapide / audit offline / bug bounty triage / CI/CD: 9.5/10 EXCELLENT*
 *Pour reverse profond: 7/10 BON, compléter avec Ghidra/angr/Burp*
+
+---
+
+# Addendum v7.3 — Architecture renforcée (document conservé sous son nom v7.2 pour la continuité des liens)
+
+## 1. Vue d'ensemble des changements
+
+| Composant | v7.2 | v7.3 |
+|---|---|---|
+| `core/result_schema.py` | Finding v2.0 | **Contrat v2.1** : `location`, `exploitability`, `references` validées, `corroboration`, `fallback`, 5 classes de résultat |
+| Détection de cible | 3 copies divergentes | **`core/target_types.py`** unique (ELF/PE/Mach-O/APK/PCAP(ng)/firmware/sources/archives/conteneurs) avec `indicators` explicables |
+| Orchestrateur | plan opaque | plan **explicable** (`plan_details`), **pré-vérification** des outils (`tool_unavailable`), **reprise** (`--resume`), **cache versionné** (`TaskCache`), isolation des pannes par tâche |
+| Différentiel | aucun | **`modules/diff/`** : rapports (ajoutés/supprimés/**modifiés**) et cibles (protections, fonctions, permissions, strings, secrets) → JSON/MD/SARIF |
+| Supply chain | `dependency_scanner` simplifié | **`modules/supply_chain/`** : parseurs 7 écosystèmes + lockfiles, transitifs, SBOM **CycloneDX 1.5 / SPDX 2.3** déterministes, politique offline extensible |
+| Dynamique | GDB piloté direct | **`sandboxed_runner`** : plan par défaut, tmp 0700, RLIMIT, iso réseau `unshare -n` (refus strict si impossible), capture bornée, crashs → findings |
+| Fuzzing | adapters statiques | **`modules/fuzzing/triage.py`** : clustering par signature, minimisation non destructive, `fuzzer_stats`, détection de reprise, limites AFL++/honggfuzz, export contrat v2.1 |
+| IA/analyse | `ai_engine` providers | **`core/explainer.py`** : `explain`/`summarize`/`ask` déterministes avec `citations` + `uncertainty`, IA = commentaire optionnel non probant |
+| Reporting | SARIF figé | SARIF version réelle + `metadata` du run, Markdown « Métadonnées d'audit », `--fail-on` (exit 2) sur `scan` et `supply-chain` |
+
+## 2. Flux d'une exécution `r3con scan`
+
+```
+TARGET → detect_target() (magic + structure ; indicators)
+       → profil auto (table de correspondance kind→profil)
+       → _build_plan() (tâches filtrées config/outils activés)
+       → _explain_plan() (tool, disponibilité, fallback, install_hint)
+       → reprise ? (artefacts <task>.json d'un run interrompu)
+       → cache ? (TaskCache.fingerprint(hash|tâche|profil|config|outils|schéma))
+       → exécution par pipeline (niveaux de dépendance, timeout par tâche,
+         une exception = une erreur isolée)
+       → fallbacks internes marqués (provenance.fallback_of) si outil absent
+       → _collect_findings → normalize_findings → deduplicate_findings
+       → make_result(schema 2.1, findings_summary borné 0-100)
+       → artefacts <task>.json + state.json ; report_meta pour le CLI
+```
+
+## 3. Contrat Finding v2.1 — invariants testés
+
+- `stable_id` = sha256(cible | type | source_ref∣|location canonique | outil)[:20] ;
+  déterministe et identique entre deux runs sur une cible inchangée.
+- Sévérités/couleurs : seules CRITICAL/HIGH/MEDIUM/LOW/INFO subsistent ; tout le
+  reste est normalisé (alias `warning`, `crit`, `info`…) ou devient INFO.
+- `references` : expressions strictes `CVE-AAAA-NNNN+`, `CWE-NN`, `TNNNN(.NNN)` ;
+  une valeur invalide est **rejetée**, jamais propagée.
+- Déduplication : même `(cible, type, emplacement)` → union des références, des
+  localisations, liste des outils corroborants (format legacy conservé),
+  confiance plafonnée à 0,99, un finding réel neutralise le marquage fallback.
+- Résumé : score 0-100 = Σ (poids sévérité × confiance × bonus exploitabilité ×
+  léger bonus corroboration), hors faux positifs ; rating en 5 paliers.
+
+## 4. Points d'extension
+
+- Nouveau type de cible : ajouter la signature dans `core/target_types.py`
+  (indicators + détail), la mapper dans `_select_profile`.
+- Nouvelle tâche d'orchestrateur : l'enregistrer dans `EXTERNAL_TASKS` (outil,
+  repli, raison) → elle devient automatiquement explicable, pré-vérifiée,
+  cachable et résuniable.
+- Nouvel écosystème supply-chain : parseur dans `manifests.py` renvoyant la
+  structure composant + une entrée de `MANIFEST_PATTERNS`.
+- Nouvelle règle de politique : ajouter au fichier `--policy` ; le format est
+  documenté dans `modules/supply_chain/policy.py`.
+
+## 5. Compatibilité
+
+Les clés historiques (`type`, `finding["file"]`, `provenance.corroborating_tools`
+chaîne, enveloppes `make_result` 2.0, sortie texte des commandes v7.2) restent
+émises ou acceptées ; les additions sont rétro-compatibles. Aucune suppression
+de commande ; `analysis.cache_enabled` héritée du legacy est enfin branchée
+(comportement amélioré, non cassant). Les divergence de classification ELF
+invalide/ZIP/pcapng ont été **unifiées** au profit du classifieur précis —
+c'est le seul changement sémantique visible, détaillé dans le CHANGELOG.
