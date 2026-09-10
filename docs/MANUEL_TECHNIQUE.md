@@ -1,6 +1,6 @@
-# r3con v7.2 — Manuel Technique Complet
+# r3con v7.3.0 — Manuel Technique Complet
 
-> **Titan-Omega-Full-Rival-Plus-RealTime-ML** — Outil de recherche en sécurité unifié offline-first
+> **7.3.0 Stable - La vraie version fusionnée** — Outil de recherche en sécurité unifié offline-first
 > Binary · Malware · Network · Web · Cloud · Container · Secrets · Decompiler · AI/ML · Reporting
 
 ```
@@ -10,14 +10,14 @@
  ██╔══██╗ ╚═══██╗██║     ██║   ██║██║╚██╗██║
  ██║  ██║██████╔╝╚██████╗╚██████╔╝██║ ╚████║
  ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚═════╝╚═╝  ╚═══╝
- v7.2.0 | 27 groupes CLI | 50+ commandes | 49 modules | 95% offline
+ v7.3.0 | 27 groupes CLI | 50+ commandes | 49 modules | 95% offline
 ```
 
 ---
 
 ## Table des Matières
 
-1. [Vue d'ensemble v7.2](#1-vue-densemble-v72)
+1. [Vue d'ensemble v7.3.0](#1-vue-densemble-v72)
 2. [Architecture](#2-architecture)
 3. [Installation](#3-installation)
 4. [Démarrage Rapide](#4-démarrage-rapide)
@@ -35,7 +35,7 @@
    - 6.10 Exploitation (AEG + ROP)
    - 6.11 Reporting (7 exporters)
    - 6.12 Disasm & Audit
-7. [Dashboard Real-time v7.2](#7-dashboard-real-time-v72)
+7. [Dashboard Real-time v7.3.0](#7-dashboard-real-time-v72)
 8. [Workspaces Fédérés](#8-workspaces-fédérés)
 9. [Configuration](#9-configuration)
 10. [Exemples Concrets](#10-exemples-concrets)
@@ -46,13 +46,13 @@
 
 ---
 
-## 1. Vue d'ensemble v7.2
+## 1. Vue d'ensemble v7.3.0
 
-### Qu'est-ce que r3con v7.2 ?
+### Qu'est-ce que r3con v7.3.0 ?
 
 r3con est un **outil unifié offline-first** qui remplace 15+ outils spécialisés en un seul binaire CLI:
 
-| Outil Remplacé | Domaine r3con | Note v7.2 |
+| Outil Remplacé | Domaine r3con | Note v7.3.0 |
 |----------------|---------------|-----------|
 | Ghidra, IDA, Binary Ninja | Decompiler + Disasm | 7/10 offline pseudo, 10/10 avec Ghidra |
 | Cuckoo Sandbox, capa, VirusTotal | Malware 8 moteurs | 9/10 offline, sandbox émulé 5 cats |
@@ -68,9 +68,9 @@ r3con est un **outil unifié offline-first** qui remplace 15+ outils spécialis�
 
 **USP:** **1 outil pour tout, 95% offline, rapide (<1s pour ELF 150KB), 27 groupes CLI, 50+ commandes.**
 
-### Nouveautés v7.2 vs v7.1
+### Nouveautés v7.3.0 vs v7.1
 
-| Feature | v7.1 | v7.2 |
+| Feature | v7.1 | v7.3.0 |
 |---------|------|------|
 | Modules OK | 46/49 | **49/49 10/10** — fix 3 imports manquants |
 | ML Embeddings | 0/10 | **8/10 TF-IDF offline, 9.5/10 avec sentence-transformers** |
@@ -83,7 +83,7 @@ r3con est un **outil unifié offline-first** qui remplace 15+ outils spécialis�
 
 - **Pentest rapide / audit offline / bug bounty triage / CI/CD:** 9.5/10 EXCELLENT
 - **Reverse profond / malware avancé / exploit dev:** 7/10 BON, compléter avec Ghidra/angr/Burp
-- **Remplacer 15 outils:** 8.5/10 → **9/10 en v7.2** Très bon compromis unified
+- **Remplacer 15 outils:** 8.5/10 → **9/10 en v7.3.0** Très bon compromis unified
 
 ---
 
@@ -138,7 +138,7 @@ r3con/
 │       ├── tools.py, dynamic.py, config.py, workspace.py
 │       ├── fuzzing.py, agent.py, exploit.py, interactive.py, analyze.py
 ├── core/
-│   ├── __version__.py (7.2.0 Titan-Omega-Full-Rival-Plus-RealTime-ML)
+│   ├── __version__.py (7.3.0 7.3.0 Stable - La vraie version fusionnée)
 │   ├── cache.py, pipeline.py, workspace_manager.py
 │   ├── config_manager.py, distributed.py (TaskQueue+ES+PG+Performance)
 │   ├── agent.py, ai_engine.py, session.py
@@ -160,7 +160,7 @@ r3con/
 │   └── ...
 ├── config.yaml, config.pro.yaml
 ├── Dockerfile, docker-compose.yml (ES, PG, Redis, dashboard)
-├── docs/MANUEL_TECHNIQUE_v7.2.md (ce fichier)
+├── docs/MANUEL_TECHNIQUE_v7.3.0.md (ce fichier)
 └── tests/ (24 passed, 2 skipped)
 ```
 
@@ -234,11 +234,11 @@ r3con ml embeddings "test query" --method hybrid
 
 ```bash
 # Build
-docker build -t r3con:7.2.0 .
+docker build -t r3con:7.3.0 .
 
 # Run CLI
-docker run --rm -v $(pwd)/samples:/home/r3con/samples:ro r3con:7.2.0 --help
-docker run --rm -v $(pwd)/myapp:/home/r3con/target:ro r3con:7.2.0 ai agent /home/r3con/target --iterations 3
+docker run --rm -v $(pwd)/samples:/home/r3con/samples:ro r3con:7.3.0 --help
+docker run --rm -v $(pwd)/myapp:/home/r3con/target:ro r3con:7.3.0 ai agent /home/r3con/target --iterations 3
 
 # Compose full stack
 docker-compose up r3con-dashboard
@@ -264,7 +264,7 @@ docker-compose up r3con-dashboard
 
 ## 4. Démarrage Rapide
 
-### 4.1 Audit complet en 1 commande (meilleur cas v7.2)
+### 4.1 Audit complet en 1 commande (meilleur cas v7.3.0)
 
 ```bash
 # Agent autonome OODA qui fait tout
@@ -330,7 +330,7 @@ r3con ai query "show critical vulnerabilities" --context-file findings.json --fo
 r3con ai agent /bin/suspicious --iterations 3 --workspace test
 r3con ai summarize ./findings.json
 
-# 🧠 ML Embeddings v7.2
+# 🧠 ML Embeddings v7.3.0
 r3con ml embeddings "buffer overflow" --top-k 5 --method hybrid --json-output
 r3con ml cluster --k 3 --docs findings.json
 r3con ml rag "how to fix SQL injection" --findings findings.json
@@ -341,7 +341,7 @@ r3con report defectdojo findings.json
 r3con report mitre findings.json --output layer.json  # import https://mitre-attack.github.io/attack-navigator/
 r3con report pdf findings.json --target myapp --format pdf  # pdf/html/md
 
-# 📊 Dashboard Real-time v7.2
+# 📊 Dashboard Real-time v7.3.0
 r3con dashboard start --host 0.0.0.0 --port 5000
 r3con dashboard test --json-output
 
@@ -368,7 +368,7 @@ r3con workspace federate my-audit other-workspace --share findings
 
 ## 5. CLI Référence Complète
 
-### 5.1 Groupes — 27 groupes v7.2
+### 5.1 Groupes — 27 groupes v7.3.0
 
 | Groupe | Description | Sous-commandes | Note |
 |--------|-------------|----------------|------|
@@ -404,7 +404,7 @@ r3con workspace federate my-audit other-workspace --share findings
 
 ```bash
 r3con --help
-r3con --version  # 7.2.0
+r3con --version  # 7.3.0
 r3con --no-banner --theme matrix/cyber/amber/mono --no-color
 ```
 
@@ -454,7 +454,7 @@ modules/malware/
 ├── behavior_analyzer.py (8 familles API + MITRE mapping)
 ├── malware_classifier.py (10 familles: ransomware, trojan, etc)
 ├── extractor.py (IoC: IPs, domains, URLs, emails, hashes, CVE, BTC, registry, mutex + config + crypto)
-├── ioc_extractor.py (alias extractor.py - FIX v7.2)
+├── ioc_extractor.py (alias extractor.py - FIX v7.3.0)
 ├── unpacker.py (11 packers UPX etc + entropy)
 ├── anti_analysis.py (35 patterns anti-debug/VM/timing)
 └── dynamic/
@@ -527,7 +527,7 @@ modules/network/
 ├── dns_analyzer.py (DGA entropy + ngram + tunneling)
 ├── tls_analyzer.py (JA3 + SNI + suspicious)
 ├── http_analyzer.py (suspicious URLs + user-agent)
-├── pcap_parser.py (tshark -T json 1000 + -T fields ip.src/dst/tcp.port/dns.qry.name + scapy rdpcap + heuristic IPs/domains) - FIX v7.2
+├── pcap_parser.py (tshark -T json 1000 + -T fields ip.src/dst/tcp.port/dns.qry.name + scapy rdpcap + heuristic IPs/domains) - FIX v7.3.0
 ├── live_capture.py (live capture optional)
 └── external_analyzers.py (tshark/suricata/zeek/nmap wrappers)
 ```
@@ -581,7 +581,7 @@ modules/web_scanner/
 └── nuclei_wrapper.py (NucleiWrapper: -u -j -silent + templates/severity filter + JSON parse)
 ```
 
-#### Règles SAST v7.2 (fix v7.0 patterns permissifs)
+#### Règles SAST v7.3.0 (fix v7.0 patterns permissifs)
 
 | Cat | Patterns | Exemple | Payloads |
 |-----|----------|---------|----------|
@@ -744,7 +744,7 @@ r3con secrets scan ./secrets.env
 - **Forces:** 20 regex + high entropy >=4.5 + mixed case/digits + dedup + line num + context, rivalise Trufflehog+GitLeaks+GitGuardian detection (pas verification), 100% offline rapide
 - **Faiblesses:** Pas de vérification API (comme Trufflehog vérifie si clé valide), pas de git history scanning, entropy threshold peut rater
 
-**Note:** Meilleur module v7.2 — 10/10
+**Note:** Meilleur module v7.3.0 — 10/10
 
 ---
 
@@ -819,16 +819,16 @@ se = SymbolicEngine("/bin/ls").analyze()
 
 ---
 
-### 6.9 🧠 AI/ML — RAG v1/v2 + Agent OODA + Embeddings — 7/10 → 9/10 v7.2
+### 6.9 🧠 AI/ML — RAG v1/v2 + Agent OODA + Embeddings — 7/10 → 9/10 v7.3.0
 
 #### Architecture
 
 ```
 modules/ai/
 ├── rag_engine.py (RAGEngine: 10 intents search/summarize/explain/remediation/att&ck/cve/critical/exploit/compliance/ioc + retrieve keyword overlap + KG search + generate_answer + summarize)
-├── rag_engine_v2.py (RAGEngineV2: ML embeddings + hybrid search + 10 intents + clustering) - NEW v7.2
+├── rag_engine_v2.py (RAGEngineV2: ML embeddings + hybrid search + 10 intents + clustering) - NEW v7.3.0
 ├── agent_advanced.py (AdvancedAgent: OODA observe magic PE/ELF/PCAP/source/container/terraform + orient tools selection + decide plan deps/priorities + act unified pipeline + run_autonomous 3 iterations critical check)
-└── embeddings.py (MLEmbeddingsEngine: TFIDFEmbedder tokenize+stopwords+vocab+IDF+cosine + SentenceTransformerEmbedder all-MiniLM-L6-v2 + MLEmbeddingsEngine fit/search hybrid 0.6 transformer+0.4 tfidf + cluster k-means 10 iterations) - NEW v7.2
+└── embeddings.py (MLEmbeddingsEngine: TFIDFEmbedder tokenize+stopwords+vocab+IDF+cosine + SentenceTransformerEmbedder all-MiniLM-L6-v2 + MLEmbeddingsEngine fit/search hybrid 0.6 transformer+0.4 tfidf + cluster k-means 10 iterations) - NEW v7.3.0
 ```
 
 #### APIs
@@ -841,7 +841,7 @@ rag.add_findings([{"type": "Buffer Overflow", "severity": "CRITICAL", "file": "v
 r = rag.query("show critical vulnerabilities")
 # → intent search, findings, answer
 
-# RAG v2 ML - NEW v7.2
+# RAG v2 ML - NEW v7.3.0
 from modules.ai.rag_engine_v2 import RAGEngineV2
 rag = RAGEngineV2(use_embeddings=True)
 rag.add_findings([{"type": "Buffer Overflow", "severity": "CRITICAL", "description": "strcpy overflow", "file": "vuln.c"}])
@@ -849,7 +849,7 @@ r = rag.query("show critical buffer overflow")
 # → intent search, findings 3, answer, use_embeddings True, embeddings_stats vocab_size/doc_count/use_transformers
 # → search_findings, summarize_findings by_sev/type/file, cluster_findings k-means
 
-# Embeddings - NEW v7.2
+# Embeddings - NEW v7.3.0
 from modules.ai.embeddings import MLEmbeddingsEngine
 engine = MLEmbeddingsEngine(use_transformers=False)  # True for transformers
 engine.fit(["Buffer overflow strcpy critical", "SQL injection concat"])
@@ -880,7 +880,7 @@ r3con ai query "show critical vulnerabilities" --context-file findings.json --fo
 r3con ai agent /bin/suspicious --iterations 3 --workspace test
 r3con ai summarize ./findings.json
 
-# ML v7.2
+# ML v7.3.0
 r3con ml embeddings "buffer overflow" --top-k 5 --method hybrid --json-output
 r3con ml embeddings "SQL injection" --docs findings.json --method tfidf
 r3con ml cluster --k 3 --docs findings.json --json-output
@@ -889,7 +889,7 @@ r3con ml rag "how to fix SQL injection" --findings findings.json --json-output
 
 #### Forces / Faiblesses
 
-- **Forces v7.2:** TF-IDF 100% offline + transformers optional + hybrid search 0.6/0.4 + k-means clustering + RAG v2 10 intents + Agent OODA autonome, rivalise ChromaDB/Pinecone/LangChain basique
+- **Forces v7.3.0:** TF-IDF 100% offline + transformers optional + hybrid search 0.6/0.4 + k-means clustering + RAG v2 10 intents + Agent OODA autonome, rivalise ChromaDB/Pinecone/LangChain basique
 - **Faiblesses:** TF-IDF keyword pas sémantique profonde sans transformers, pas de LLM (pas GPT), agent basique
 
 ---
@@ -1014,12 +1014,12 @@ modules/disasm/
 modules/audit/
 ├── static_analyzer.py (StaticAnalyzer: C/C++/Python/Java/Go/Rust + 6 cats)
 ├── secret_scanner.py (voir 6.6)
-└── source_scanner.py (SourceScanner: static+secrets unified scan_file/dir merge findings) - FIX v7.2
+└── source_scanner.py (SourceScanner: static+secrets unified scan_file/dir merge findings) - FIX v7.3.0
 ```
 
 ---
 
-## 7. Dashboard Real-time v7.2
+## 7. Dashboard Real-time v7.3.0
 
 ### 7.1 Features
 
@@ -1189,7 +1189,7 @@ distributed:
 
 ## 10. Exemples Concrets
 
-### 10.1 Audit Complet My-App en 1 Commande (Meilleur Cas v7.2 — 9.5/10)
+### 10.1 Audit Complet My-App en 1 Commande (Meilleur Cas v7.3.0 — 9.5/10)
 
 ```bash
 # Structure my-app/
@@ -1265,7 +1265,7 @@ python -c "from modules.malware.extractor import MalwareExtractor; print(Malware
 r3con network analyze ./capture.pcap --engine all --json-output > network.json
 # → protocol + threat beaconing/DGA + flow beacons + DNS DGA + TLS JA3 + HTTP
 
-# Pcap parser v7.2
+# Pcap parser v7.3.0
 python -c "from modules.network.pcap_parser import PcapParser; print(PcapParser().parse_file('./capture.pcap'))"
 # → tshark_json/tshark_fields/scapy/heuristic + flows + dns_queries + ips + domains
 ```
@@ -1312,9 +1312,9 @@ networks: r3con-net bridge
 ### 11.3 Usage
 
 ```bash
-docker build -t r3con:7.2.0 .
-docker run --rm r3con:7.2.0 --help
-docker run --rm -v $(pwd)/samples:/home/r3con/samples:ro r3con:7.2.0 malware analyze /home/r3con/samples/malware.exe
+docker build -t r3con:7.3.0 .
+docker run --rm r3con:7.3.0 --help
+docker run --rm -v $(pwd)/samples:/home/r3con/samples:ro r3con:7.3.0 malware analyze /home/r3con/samples/malware.exe
 
 docker-compose up r3con-dashboard
 # → http://localhost:5000 dashboard real-time + ES :9200 + PG :5432 + Redis :6379
@@ -1367,7 +1367,7 @@ core/pipeline.py - graphe dépendances + niveaux + priorités
 
 ### 13.1 vs Outils Spécialisés
 
-| Domaine | Outil Spécialisé | r3con v7.2 | Verdict |
+| Domaine | Outil Spécialisé | r3con v7.3.0 | Verdict |
 |---------|------------------|------------|---------|
 | Decompiler | Ghidra 10/10 | 7/10 pseudo offline, 10/10 avec Ghidra | 70% de Ghidra, mais fait aussi 14 autres domaines |
 | Malware Sandbox | Cuckoo 10/10 | 9/10 sandbox émulé 5 cats | 80% Cuckoo basique, offline rapide |
@@ -1383,11 +1383,11 @@ core/pipeline.py - graphe dépendances + niveaux + priorités
 ### 13.2 vs 15 Outils Combinés
 
 - **15 outils combinés:** Ghidra+Wireshark+Cuckoo+Burp+Nuclei+Checkov+Trivy+Trufflehog+angr+JIRA+DefectDojo+MITRE Navigator+Dradis+ChromaDB+Grafana
-- **r3con v7.2:** 1 outil qui fait 80% de chaque, USP = unified offline-first + 1 commande + rapide + 95% offline
+- **r3con v7.3.0:** 1 outil qui fait 80% de chaque, USP = unified offline-first + 1 commande + rapide + 95% offline
 
 ### 13.3 Cas d'Usage
 
-| Cas | r3con v7.2 | Recommandation |
+| Cas | r3con v7.3.0 | Recommandation |
 |-----|------------|----------------|
 | Audit rapide complet my-app (code+Dockerfile+K8s+secrets+binaire) 1 commande `ai agent` | **9.5/10 EXCELLENT** | Utiliser r3con seul |
 | Bug bounty triage / CI/CD / pentest rapide / audit offline | **9.5/10 EXCELLENT** | Utiliser r3con seul |
@@ -1450,7 +1450,7 @@ core/pipeline.py - graphe dépendances + niveaux + priorités
 
 ## Annexes
 
-### A. CLI Help Complet v7.2
+### A. CLI Help Complet v7.3.0
 
 ```bash
 r3con --help
@@ -1474,43 +1474,43 @@ r3con ml --help  # embeddings/cluster/rag
 
 ```python
 # core/__version__.py
-__version__ = "7.2.0"
+__version__ = "7.3.0"
 __version_info__ = (7, 2, 0)
-__codename__ = "Titan-Omega-Full-Rival-Plus-RealTime-ML"
+__codename__ = "7.3.0 Stable - La vraie version fusionnée"
 ```
 
 ### C. Liens
 
 - Repo: https://github.com/nsaagent120-droid/r3con
-- Branche v7.2: https://github.com/nsaagent120-droid/r3con/tree/arena/01a083e6-r3con
-- Commit v7.2: https://github.com/nsaagent120-droid/r3con/commit/f1a7c014e35be96274efcee833b490001c9546cc
+- Branche v7.3.0: https://github.com/nsaagent120-droid/r3con/tree/arena/01a083e6-r3con
+- Commit v7.3.0: https://github.com/nsaagent120-droid/r3con/commit/f1a7c014e35be96274efcee833b490001c9546cc
 - MITRE Navigator: https://mitre-attack.github.io/attack-navigator/
 - Ghidra: https://ghidra-sre.org/
 - Nuclei: https://github.com/projectdiscovery/nuclei
 - angr: https://angr.io/
 
-### D. Changelog v7.2
+### D. Changelog v7.3.0
 
 - Fix 3 imports manquants: ioc_extractor, pcap_parser, source_scanner → 49/49 modules OK
 - ML Embeddings: TFIDFEmbedder + SentenceTransformerEmbedder + MLEmbeddingsEngine + k-means clustering
 - RAG v2: ML embeddings hybrid search + 10 intents + clustering
 - Dashboard v2: WebSocket real-time + 14 tabs + real-time logs + live metrics + chart + polling fallback
 - CLI: dashboard + ml groups → 27 groupes, 50+ commandes
-- Version: 7.2.0 Titan-Omega-Full-Rival-Plus-RealTime-ML
+- Version: 7.3.0 7.3.0 Stable - La vraie version fusionnée
 
 ---
 
-*Manuel technique généré par r3con v7.2 — 2026-09-09 — 100% offline-first unified security toolkit*
+*Manuel technique généré par r3con v7.3.0 — 2026-09-09 — 100% offline-first unified security toolkit*
 *Pour pentest rapide / audit offline / bug bounty triage / CI/CD: 9.5/10 EXCELLENT*
 *Pour reverse profond: 7/10 BON, compléter avec Ghidra/angr/Burp*
 
 ---
 
-# Addendum v7.3 — Architecture renforcée (document conservé sous son nom v7.2 pour la continuité des liens)
+# Addendum v7.3 — Architecture renforcée (document conservé sous son nom v7.3.0 pour la continuité des liens)
 
 ## 1. Vue d'ensemble des changements
 
-| Composant | v7.2 | v7.3 |
+| Composant | v7.3.0 | v7.3 |
 |---|---|---|
 | `core/result_schema.py` | Finding v2.0 | **Contrat v2.1** : `location`, `exploitability`, `references` validées, `corroboration`, `fallback`, 5 classes de résultat |
 | Détection de cible | 3 copies divergentes | **`core/target_types.py`** unique (ELF/PE/Mach-O/APK/PCAP(ng)/firmware/sources/archives/conteneurs) avec `indicators` explicables |
@@ -1568,7 +1568,7 @@ TARGET → detect_target() (magic + structure ; indicators)
 ## 5. Compatibilité
 
 Les clés historiques (`type`, `finding["file"]`, `provenance.corroborating_tools`
-chaîne, enveloppes `make_result` 2.0, sortie texte des commandes v7.2) restent
+chaîne, enveloppes `make_result` 2.0, sortie texte des commandes v7.3.0) restent
 émises ou acceptées ; les additions sont rétro-compatibles. Aucune suppression
 de commande ; `analysis.cache_enabled` héritée du legacy est enfin branchée
 (comportement amélioré, non cassant). Les divergence de classification ELF

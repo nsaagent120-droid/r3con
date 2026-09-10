@@ -1,6 +1,6 @@
 .PHONY: help install install-full dev test lint format clean build publish docker
 
-VERSION := $(shell python3 -c "from core.__version__ import __version__; print(__version__)" 2>/dev/null || echo "5.0.3")
+VERSION := $(shell python3 -c "from core.__version__ import __version__; print(__version__)" 2>/dev/null || echo "7.3.0")
 PY := python3
 
 help: ## Show this help

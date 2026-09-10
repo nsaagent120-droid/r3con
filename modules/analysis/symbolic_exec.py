@@ -1,16 +1,18 @@
 """
-r3con - Symbolic Execution - Unified wrapper
-DEPRECATED: Use modules.analysis_deep.symbolic_exec instead
-This file now imports from analysis_deep for backward compatibility
+r3con 7.3.0 — Symbolic Execution wrapper (silent by default)
+DEPRECATED: Use modules.analysis_deep.symbolic_exec instead.
+Warning only if R3CON_WARN_DEPRECATED=1.
 """
+import os
 import warnings
-warnings.warn(
-    "modules.analysis.symbolic_exec is deprecated, use modules.analysis_deep.symbolic_exec",
-    DeprecationWarning,
-    stacklevel=2
-)
 
-# Import from deep (the fixed, validated version)
+if os.environ.get("R3CON_WARN_DEPRECATED", "").lower() in {"1", "true", "yes"}:
+    warnings.warn(
+        "modules.analysis.symbolic_exec is deprecated, use modules.analysis_deep.symbolic_exec",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
 from modules.analysis_deep.symbolic_exec import (
     SymbolicExecutor,
     SymbolicValue,
@@ -20,7 +22,6 @@ from modules.analysis_deep.symbolic_exec import (
     MAX_PATHS,
 )
 
-# Keep old names for backward compat
 SymbolicVar = SymbolicValue
 PathCondition = ExecutionPath
 

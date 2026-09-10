@@ -1,49 +1,45 @@
 """
-r3con v6.0 - Advanced Cache - Unified wrapper
-DEPRECATED: Use core.cache instead
-This file now wraps core.cache for backward compatibility
+r3con 7.3.0 — Advanced Cache wrapper (silent by default)
+DEPRECATED: Use core.cache instead. Warning only if R3CON_WARN_DEPRECATED=1.
 """
+import os
 import warnings
-warnings.warn(
-    "modules.performance.advanced_cache is deprecated, use core.cache",
-    DeprecationWarning,
-    stacklevel=2
-)
 
-# Try to import from core.cache, fallback to original SQLite implementation if needed
+if os.environ.get("R3CON_WARN_DEPRECATED", "").lower() in {"1", "true", "yes"}:
+    warnings.warn(
+        "modules.performance.advanced_cache is deprecated, use core.cache",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
 try:
     from core.cache import IncrementalCache
 
     class AdvancedCache(IncrementalCache):
-        """Legacy wrapper - now uses IncrementalCache with SQLite backend option."""
+        """Legacy wrapper - now uses IncrementalCache."""
 
         def __init__(self, ttl_days: int = 30, max_entries: int = 5000):
-            # Map to IncrementalCache params
             super().__init__(ttl_days=ttl_days, max_entries=max_entries)
-            # Keep SQLite path for backward compat stats
             self._sqlite_fallback = None
             try:
                 import sqlite3
                 from pathlib import Path
                 db_path = Path.home() / ".r3con" / "advanced_cache.db"
                 if db_path.exists():
-                    # If old DB exists, keep it for stats
                     self._sqlite_db_path = db_path
             except Exception:
                 pass
 
         def stats(self):
-            # Enhanced stats
             base_stats = {
                 "total_entries": len(self.cache.get("_entries", {})),
-                "version": "6.0-unified",
+                "version": "7.3.0-unified",
                 "ttl_days": self.ttl_days,
                 "max_entries": self.max_entries,
             }
             return base_stats
 
         def get_risky_files(self, min_critical: int = 1):
-            # Simple implementation from cache entries
             risky = []
             for key, entry in self.cache.get("_entries", {}).items():
                 results = entry.get("results", {})
@@ -59,19 +55,15 @@ try:
             return sorted(risky, key=lambda x: x["critical_count"], reverse=True)
 
 except ImportError:
-    # Fallback to original SQLite implementation if core.cache not available
     import json
-    import hashlib
     import sqlite3
     import threading
     from pathlib import Path
-    from typing import Dict, Optional, List
-    from datetime import datetime, timedelta
+    from typing import Dict
 
     ADVANCED_CACHE_DB = Path.home() / ".r3con" / "advanced_cache.db"
-    CACHE_VERSION = "6.0-unified-fallback"
+    CACHE_VERSION = "7.3.0-unified-fallback"
     MAX_ENTRIES = 5000
-    MAX_ANALYTICS = 10000
 
     class AdvancedCache:
         def __init__(self, ttl_days: int = 30, max_entries: int = MAX_ENTRIES):

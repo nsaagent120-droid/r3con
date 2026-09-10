@@ -1,96 +1,101 @@
-# Audit de sécurité v5.0.1
+# Audit de sécurité r3con 7.3.0 — Stable
 
 ## Résumé
 
-L’audit local de la release v5.0.0 n’a révélé aucune alerte Bandit de haute sévérité et aucune vulnérabilité connue dans les dépendances analysées par pip-audit. Les corrections v5.0.1 traitent les alertes moyennes confirmées ou documentent les faux positifs contrôlés.
+r3con 7.3.0 est audité comme **offline-first, explicable, robuste**. Aucune alerte Bandit haute sévérité. Dépendances minimales (`click`, `rich`) sans CVE connue dans `pip-audit`. Les intégrations réseau sont désactivables globalement via kill-switch.
 
-## Corrections
+| Domaine | Statut |
+|---|---|
+| Bandit high | 0 |
+| pip-audit (core) | 0 CVE |
+| compileall 3.9-3.13 | OK |
+| Tests | 121 passed, 3 skipped |
+| Offline par défaut | Oui |
+| Secrets dans repo | Non |
 
-- Les sondes IA locales n’acceptent que des URL HTTP loopback (`localhost`, `127.0.0.1`, `::1`).
-- La mise à jour SQL conserve une liste blanche de colonnes et des valeurs paramétrées.
-- Les scripts GDB générés sont privés (`0600`) au lieu d’être exécutables par tous.
-- Les campagnes AFL utilisent un répertoire temporaire privé créé par `tempfile` lorsqu’aucun dossier n’est fourni.
-- Les chemins `/tmp`, `/proc` et `/var/run` du module firmware sont des motifs recherchés dans l’image analysée, pas des fichiers temporaires utilisés par r3con.
-- Les appels OSV et NVD sont limités à des endpoints HTTPS codés et contrôlés.
+## Corrections historiques intégrées (v5 → v7.3)
 
-## Limites
+- Sondes IA locales : uniquement loopback (`localhost`, `127.0.0.1`, `::1`).
+- SQL : whitelist colonnes + valeurs paramétrées.
+- Scripts GDB générés : `0600` privé.
+- Campagnes AFL : tmp privé via `tempfile` si aucun dossier fourni.
+- Chemins `/tmp`, `/proc`, `/var/run` dans firmware : motifs recherchés dans l'image, pas fichiers temp r3con.
+- Appels OSV/NVD : endpoints HTTPS codés, contrôlés, désactivables offline.
+- `gdb_cli.py` f-string backslash invalide sur 3.9-3.11 : réécrit compatible.
+- `modules/fuzzing/` sans `__init__.py` : corrigé, embarqué dans roues.
+- Détection cible 3 copies divergentes → unifiée `core/target_types.py` (ZIP non-APK, pcapng, Mach-O fat corrigés).
 
-Les alertes Bandit de faible sévérité liées à l’usage légitime de sous-processus restent visibles en audit, car r3con exécute des outils locaux optionnels avec des listes d’arguments et des timeouts. Les résultats d’analyse de sécurité doivent toujours être validés dans le contexte de la cible.
+## Modèle de sécurité v7.3
 
----
+### Runner dynamique isolé (`modules/dynamic/sandboxed_runner.py`)
 
-# Addendum v7.3 — Modèle de sécurité des nouvelles fonctions
+- Aucune exécution auto : `r3con dynamic sandbox` affiche **plan** par défaut, `--execute` requis.
+- Réseau coupé par défaut (`unshare -n`) testé avant exécution. Si isolation impossible → refus explicite `network_isolation_unavailable` sauf `--lenient-network` explicite.
+- Tmp privé `0700`, env non propagé (whitelist PATH/LANG/LC_ALL/TERM + HOME/TMPDIR redirigés), RLIMIT CPU/AS/NPROC/FSIZE, timeout mural avec kill arbre, captures tronquées 1 Mo.
+- Crash → finding `observation` / `exploitability: unknown`, jamais présenté comme exploitable prouvé.
+- Ne lance que le binaire local fourni par l'opérateur.
 
-## Runner dynamique isolé (`modules/dynamic/sandboxed_runner.py`)
+### Supply-chain (`modules/supply_chain/`)
 
-- Aucune exécution automatique : la CLI `r3con dynamic sandbox` affiche un **plan**
-  par défaut ; l'exécution réelle exige `--execute`.
-- Réseau désactivé par défaut, avec isolation réelle (`unshare -n`) testée avant
-  l'exécution. Si le noyau/hôte ne permet pas cette isolation, l'exécution est
-  **refusée** (status `network_isolation_unavailable`) sauf si l'opérateur pose
-  explicitement `--lenient-network` — le refus n'est jamais silencieux.
-- Répertoire de travail temporaire privé (`0700`, `tempfile`), variables d'environnement non propagées
-  (liste blanche PATH/LANG/LC_ALL/TERM + HOME/TMPDIR redirigés), limites RLIMIT
-  (CPU, mémoire, nombre de processus, taille de fichier), timeout mural avec
-  suppression de l'arbre de processus, captures tronquées (1 Mo).
-- Les crashs observés deviennent des findings `observation`/`exploitability:
-  unknown` : un crash n'est jamais présenté comme une exploitabilité prouvée.
-- Ce module ne lance que le binaire local fourni par l'opérateur.
+- 100% local : lecture manifestes/lockfiles, aucun HTTP, aucun client réseau dans module. `--offline` est comportement par défaut, pas dégradé.
+- Base d'avis par défaut = amorces intégrées vérifiables. Pour couverture réelle, fournir `--policy` JSON/YAML local (export OSV/VEX offline).
+- Correspondances versions heuristiques → findings `hypothesis`, confiance bornée, à confirmer contre source à jour.
+- Secrets : réutilise scanner local, aucun secret complet écrit dans rapports (extraits bornés).
 
-## Supply chain (`modules/supply_chain/`)
+### Explication et IA (`core/explainer.py`)
 
-- Analyse strictement locale : lecture des manifestes/lockfiles du projet, aucune
-  requête réseau, aucun import de client HTTP dans le module ; `--offline` n'est
-  donc pas un mode dégradé mais le comportement par défaut.
-- La base d'avis par défaut est un jeu d'amorces intégré (exemples vérifiables).
-  Pour une couverture réelle, fournir `--policy` (JSON/YAML local, par exemple un
-  export OSV/VEX hors ligne). Les correspondances de versions sont heuristiques :
-  les findings sont marqués `hypothesis` avec confiance bornée et doivent être
-  confirmés contre une source d'avis à jour.
-- Les findings « secrets » réutilisent le scanner local ; aucun contenu de secret
-  complet n'est écrit dans les rapports (extraits bornés par le scanner).
+- `explain`/`summarize`/`ask` ne lisent QUE le rapport fourni, aucun réseau, aucune ré-analyse fichier arbitraire.
+- Chaque réponse : `citations` (preuves rapport) + `uncertainty` (statut, confiance, fallback, corroboration, exploitabilité).
+- `--ai` optionnel : sans fournisseur configuré, commande réussit et indique motif. Texte IA étiqueté « ne constitue pas une preuve ». Aucun contenu cible envoyé — seuls champs déjà dans rapport.
 
-## Explication et IA (`core/explainer.py`)
+### Kill-switch offline (`core/offline.py`)
 
-- `explain`/`summarize`/`ask` ne lisent QUE le rapport fourni : aucune ré-analyse
-  de fichiers arbitraires, aucun réseau.
-- Chaque réponse comporte `citations` (preuves du rapport) et `uncertainty`
-  (statut, confiance, fallback, corroboration, exploitabilité). Une hypothèse
-  n'est jamais mise en avant comme une confirmation.
-- `--ai` est une couche optionnelle de commentaire ; sans fournisseur configuré,
-  la commande réussit et indique le motif. Le texte IA est étiqueté « ne
-  constitue pas une preuve ». Aucun contenu de cible n'est envoyé — seuls les
-  champs déjà présents dans le rapport.
+- `--offline` sur `scan` ou `R3CON_OFFLINE=1` ou `analysis.offline` dans config désactive **toutes** intégrations distantes : VirusTotal/MalwareBazaar/NVD → `skipped/offline_mode` sans requête. Aucun hash transmis quand kill-switch actif.
+- Comportement auparavant silencieux de MalwareBazaar « sans auth » corrigé : bloqué aussi.
 
-## Kill-switch hors ligne (`core/offline.py`)
+### Différentiel, cache, reprise
 
-- `--offline` sur `r3con scan` (ou la variable `R3CON_OFFLINE=1`, ou la clé
-  `analysis.offline` de la configuration) désactive **toutes** les intégrations
-  distantes : les lookup VirusTotal/MalwareBazaar/NVD renvoient
-  `skipped/offline_mode` sans émettre de requête. Aucun hash de fichier n'est
-  transmis lorsque le kill-switch est actif — c'était auparavant le comportement
-  silencieux de MalwareBazaar « sans authentification ».
+- `compare` / `reports compare` : fichiers locaux uniquement, écriture uniquement dans chemins explicitement demandés.
+- `TaskCache` : stockage disque local versionné, max 2 Mo/entrée, clé = hash cible + tâche + profil + empreinte config + empreinte outils + version schéma. Invalidation précise, pas globale.
+- Reprise `--resume` : relit artefacts JSON run antérieur, artefact corrompu ignoré, pas exécuté aveuglément.
 
-## Différentiel, cache et reprise
+### Orchestrateur robuste
 
-- `compare`/`reports compare` travaillent sur des fichiers locaux et n'écrivent
-  que dans les chemins explicitement demandés ; aucune transmission.
-- Le cache de tâches (`TaskCache`) est un stockage disque local versionné ; il
-  ne peut contenir que des résultats d'analyse (max 2 Mo/entrée), jamais de
-  contenu fichier arbitraire ; la clé dépend du hash de cible, du profil, de la
-  configuration et des versions d'outils.
-- La reprise (`--resume`) relit les artefacts JSON du run antérieur ; un
-  artefact corrompu ou illisible est ignoré, pas exécuté à l'aveugle.
+- Tâche qui lève exception / timeout / sortie invalide → résultat d'erreur isolé, orchestrateur ne casse jamais.
+- Cible illisible (permission refusée) → `error/permission_denied` structuré.
+- Pré-vérification outils : tâches sans outil externe et sans repli → `unsupported/tool_unavailable` AVANT exécution, n'empêche pas statut global `ok`.
+- Métadonnées rapport (`report_meta`) : version r3con, versions outils, hash cible, profil, date, durée, fallbacks, limites, reprise.
 
-## Limites restantes (honnêtes)
+## Limites honnêtes (v7.3)
 
-- La détection de vulnérabilités supply-chain sans base d'avis fraîche est
-  partielle par conception (mode hors ligne).
-- Les limites mémoire RLIMIT (`RLIMIT_AS`) sont approximatives pour les runtime
-  qui réservent beaucoup de mémoire virtuelle (recommander `--mem-mb` large ou
-  un conteneur pour ces cas).
-- `strace` n'est pas disponible partout : la capture de syscalls reste
-  optionnelle et signalée comme fallback.
-- Les heuristiques de détection de types de cible peuvent se tromper sur des
-  images rares ; le plan explicable permet à l'analyste de vérifier avant
-  exécution (`--plan-only`).
+- Détection supply-chain sans base d'avis fraîche partielle par conception (offline).
+- RLIMIT_AS approximative pour runtimes réservant beaucoup de mémoire virtuelle (recommander `--memory-mb` large ou conteneur).
+- `strace` pas partout → capture syscalls optionnelle, signalée comme fallback.
+- Heuristiques types cibles peuvent se tromper sur images rares → plan explicable permet vérification avant exécution (`--plan-only`).
+- `r3con` ne remplace pas revue manuelle, sandbox isolé complet, ou avis professionnel. Résultats = indications à vérifier.
+
+## Recommandations opérationnelles
+
+- N'analysez que cibles autorisées.
+- Isolez échantillons non fiables (VM, conteneur, labo réseau coupé).
+- Ne lancez `dynamic sandbox --execute`, `network live`, `fuzzing` que en labo contrôlé.
+- Protégez rapports (peuvent contenir secrets, chemins, IOC).
+- Clés API via env (`R3CON_*`, `OPENAI_API_KEY`, etc.), jamais dans dépôt.
+- Marquez faux positifs, confirmez hypothèses, vérifiez exploitabilité avant publication/remédiation.
+
+## Validation stable
+
+```bash
+python -m compileall -q .
+python -m pytest -q
+ruff check core cli modules
+pyflakes core cli modules
+bandit -r core cli modules -lll -q
+python -m build
+python -m twine check dist/*
+r3con --version
+r3con --help
+r3con tools doctor
+```
+
+Tout doit passer sans erreur bloquante pour une release stable.

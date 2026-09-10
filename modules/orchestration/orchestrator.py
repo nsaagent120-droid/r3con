@@ -1,16 +1,19 @@
 """
-r3con v6.0 Titan-Omega - Orchestrator Classic (Legacy wrapper)
-Maintained for backward compatibility, now delegates to UnifiedOrchestrator
+r3con 7.3.0 — Orchestrator Classic (legacy wrapper, silent by default)
+Maintained for backward compatibility, delegates to UnifiedOrchestrator.
+Warning only if R3CON_WARN_DEPRECATED=1.
 """
 from __future__ import annotations
+import os
 import warnings
 from typing import Any, Dict
 
-warnings.warn(
-    "modules.orchestration.orchestrator.Orchestrator is legacy, use modules.orchestration.unified.UnifiedOrchestrator",
-    DeprecationWarning,
-    stacklevel=2
-)
+if os.environ.get("R3CON_WARN_DEPRECATED", "").lower() in {"1", "true", "yes"}:
+    warnings.warn(
+        "modules.orchestration.orchestrator.Orchestrator is legacy, use modules.orchestration.unified.UnifiedOrchestrator",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
 try:
     from modules.orchestration.unified import UnifiedOrchestrator
@@ -23,7 +26,6 @@ try:
                      reverse_engine: str | None = None, with_ghidra: bool | None = None,
                      cache: bool = True, cache_dir: str | None = None,
                      resume_dir: str | None = None, **extra_overrides):
-            # Map old params to new
             overrides = {}
             if timeout:
                 overrides["analysis.timeout"] = timeout
@@ -41,35 +43,25 @@ try:
             super().__init__(
                 target=target,
                 profile=profile,
-                use_pipeline=False,  # Classic uses sequential for backward compat
+                use_pipeline=False,
                 cache_dir=cache_dir,
                 resume_dir=resume_dir,
                 **overrides
             )
-            # Keep old attributes for compat
             self.reverse_engine = reverse_engine or "radare2"
             self.with_ghidra = with_ghidra or False
 
         def run(self) -> Dict[str, Any]:
-            # Use parent run but ensure classic plan
             return super().run()
 
     def run_analysis(target: str, profile: str = "auto", **kwargs) -> Dict[str, Any]:
         return Orchestrator(target, profile=profile, **kwargs).run()
 
 except ImportError:
-    # Fallback to original implementation if unified not available
-    import concurrent.futures
-    import hashlib
-    import json
-    import os
     import time
     from pathlib import Path
-    from typing import List
-
-    from core.result_schema import Status, make_result, deduplicate_findings, normalize_findings
+    from core.result_schema import Status, make_result
     from modules.disasm.binary_parser import BinaryParser
-    from modules.integration.tool_manager import ToolManager
 
     class Orchestrator:
         def __init__(self, target: str, profile: str = "auto", timeout: int = 120,
@@ -90,7 +82,6 @@ except ImportError:
         def run(self) -> Dict[str, Any]:
             if not self.path.is_file():
                 return make_result(Status.INVALID, target=str(self.path), error="target_not_found")
-            # Minimal fallback
             try:
                 info = BinaryParser(str(self.path)).parse()
                 return make_result(Status.OK, target=str(self.path), profile=self.profile,

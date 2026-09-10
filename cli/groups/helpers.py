@@ -24,7 +24,7 @@ from core.ai_engine import AIEngine
 try:
     from core.__version__ import __version__ as VERSION
 except ImportError:
-    VERSION = "5.1.0"
+    VERSION = "7.3.0"
 
 THEME_PRESETS = {
     "matrix": {"banner": "bold green", "accent": "bold green", "success": "bold green", "warning": "bold yellow", "critical": "bold red", "high": "red", "medium": "yellow", "low": "green", "info": "green", "muted": "dim green", "label": "green", "border": "green", "table_header": "bold green", "prompt": "bold green"},

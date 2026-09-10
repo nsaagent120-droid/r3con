@@ -1,96 +1,95 @@
-# r3con v4.3.0 — Démarrage rapide
+# Quickstart r3con 7.3.0
 
-## Installation (2 minutes)
-
-```bash
-# Depuis une copie locale du projet
-cd r3con_v4.3.0
-pip install click rich
-```
-
-## Utilisation immédiate (sans rien configurer)
+## 1. Install (2 min)
 
 ```bash
-# Auditer du code source
-r3con audit file ./code.c
-
-# Analyser un APK Android
-r3con apk analyze ./app.apk
-
-# Analyser un firmware IoT
-r3con firmware analyze ./firmware.bin
-
-# Analyser un binaire
-r3con disasm file ./binary
-
-# Recherche 0day
-r3con research hypothesis ./target.c
+git clone https://github.com/nsaagent120-droid/r3con.git
+cd r3con
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+r3con --help
 ```
 
-## Activer l'Expert System (sans IA)
+## 2. Premier scan explicable
 
 ```bash
-export R3CON_EXPERT_MODE=true
-r3con audit file ./code.c
-# → +CVSS, +CWE, +scénarios d'attaque, +priority matrix
+# Binaire
+r3con scan ./program --profile auto --explain-plan
+r3con scan ./program --profile binary --json-output report.json
+
+# Source
+r3con audit file ./src/main.c --report
+r3con audit dir ./src --recursive
+
+# APK / Firmware
+r3con apk analyze ./app.apk --report
+r3con firmware analyze ./fw.bin --report
+
+# Réseau / Malware
+r3con network analyze ./capture.pcap --json
+r3con malware analyze ./sample --profile full
 ```
 
-## Activer une IA (optionnel)
+## 3. Comprendre le rapport
 
 ```bash
-# Option A : IA locale gratuite
-ollama pull llama2 && ollama serve
-
-# Option B : Nemotron gratuit (cloud)
-export TOGETHER_API_KEY=...
-
-# Option C : DeepSeek bon marché
-export DEEPSEEK_API_KEY=sk-...
-
-# Option D : Gemini gratuit
-export GEMINI_API_KEY=...
-
-# Option E : Groq gratuit + rapide
-export GROQ_API_KEY=gsk-...
+r3con summarize report.json
+r3con explain FINDING_ID --report report.json
+r3con ask report.json "Quels risques sont corroborés par plusieurs outils ?"
 ```
 
-## Toutes les options actives
+## 4. Différentiel et supply-chain
 
 ```bash
-export R3CON_EXPERT_MODE=true
-export TOGETHER_API_KEY=...
-r3con audit file ./code.c
-# → Analyse maximale
+# Diff binaires / APK / rapports
+r3con compare ./old.bin ./new.bin --format md --output diff.md
+r3con reports compare old.json new.json --format md
+
+# Supply-chain offline
+r3con supply-chain scan ./project --sbom cyclonedx --dependencies --secrets
 ```
 
-## Lancer le dashboard web
+## 5. Outils et offline
 
 ```bash
-pip install flask
-python -m modules.web.dashboard
-# → http://localhost:5000
+r3con tools status
+r3con tools doctor --json-output
+
+# Forcer offline (aucune requête distante)
+R3CON_OFFLINE=1 r3con scan ./target --offline
 ```
 
-## Lancer les tests
+## 6. Sandbox et fuzzing (labo uniquement)
 
 ```bash
-python -m pytest -q
-# 31 passed, 2 skipped dans l’environnement de référence
+# Sandbox : plan par défaut, pas d'exécution
+r3con dynamic sandbox ./binary --timeout-ms 5000
+# Exécution isolée (réseau coupé, RLIMIT)
+r3con dynamic sandbox ./binary --execute --memory-mb 256
+
+# Fuzzing : plan + export findings
+r3con fuzzing plan mycamp --timeout-ms 1000 --memory-mb 256
+r3con fuzzing export-findings mycamp
 ```
 
-## Aide
+## 7. CI
+
+```yaml
+# examples/github-actions/r3con-scan.yml
+- run: pip install -e .
+- run: r3con scan ./src --profile source --fail-on high --json-output report.json
+- uses: actions/upload-artifact@v4
+  with:
+    path: report.json
+```
+
+## 8. Aide
 
 ```bash
 r3con --help
-r3con audit --help
-r3con apk --help
-r3con firmware --help
-r3con research --help
+r3con scan --help
+r3con supply-chain scan --help
+r3con dynamic sandbox --help
 ```
 
-## Documentation complète
-
-- `README.md` — Vue d’ensemble et installation
-- `docs/USER_GUIDE.md` — Utilisation détaillée par domaine
-- `docs/MANUEL_TECHNIQUE_v7.2.md` — Architecture et modules
-- `docs/STABLE_RELEASE.md` — Validation et maintenance de la release stable
+Docs complètes : `README.md`, `docs/USER_GUIDE.md`, `docs/STABLE_RELEASE.md`, `docs/ARCHITECTURE.md`.

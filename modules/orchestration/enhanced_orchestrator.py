@@ -1,16 +1,18 @@
 """
-r3con v6.0 Titan-Omega - Enhanced Orchestrator (Legacy wrapper)
-Now delegates to UnifiedOrchestrator for clean architecture
+r3con 7.3.0 — Enhanced Orchestrator (legacy wrapper, silent by default)
+Delegates to UnifiedOrchestrator. Warning only if R3CON_WARN_DEPRECATED=1.
 """
 from __future__ import annotations
+import os
 import warnings
 from typing import Any, Dict, Optional
 
-warnings.warn(
-    "modules.orchestration.enhanced_orchestrator.EnhancedOrchestrator is legacy, use modules.orchestration.unified.UnifiedOrchestrator",
-    DeprecationWarning,
-    stacklevel=2
-)
+if os.environ.get("R3CON_WARN_DEPRECATED", "").lower() in {"1", "true", "yes"}:
+    warnings.warn(
+        "modules.orchestration.enhanced_orchestrator.EnhancedOrchestrator is legacy, use modules.orchestration.unified.UnifiedOrchestrator",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
 try:
     from modules.orchestration.unified import UnifiedOrchestrator
@@ -32,7 +34,6 @@ try:
         return EnhancedOrchestrator(target, profile=profile, config_path=config_path, **kwargs).run()
 
 except ImportError:
-    # Fallback minimal
     from pathlib import Path
     from core.result_schema import Status, make_result
     from modules.disasm.binary_parser import BinaryParser

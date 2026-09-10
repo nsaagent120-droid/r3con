@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "r3con"
 version = "7.3.0"
-description = "PRO Offline-first binary, APK, firmware and source security toolkit - 35+ tools, fuzzing lab AFL++/honggfuzz, autonomous agent OODA, ROP exploitation factory, federated workspaces, 47 capabilities"
+description = "r3con 7.3.0 stable - Offline-first, explicable, fusionnée - 49 modules, 35+ tools, 27 CLI groups, supply-chain, diff, sandbox, 121 tests - la vraie version"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"

@@ -52,7 +52,8 @@ Examples:
     os.environ['R3CON_EXPERT_MODE'] = 'true'
 
     if not args.quiet:
-        print("\n\033[36m r3con CI Scanner v4.3.0\033[0m")
+        from core.__version__ import __version__ as VER
+        print(f"\n\033[36m r3con CI Scanner v{VER} stable\033[0m")
         print(f" Target: {args.target}")
         print(f" Format: {args.format}")
         print(f" Scan:   {args.scan}\n")
