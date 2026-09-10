@@ -1,9 +1,11 @@
 import json
 from pathlib import Path
 
+import click
+import pytest
 from click.testing import CliRunner
 
-from cli.groups.power import _profile_for, _target_kind, reports_group
+from cli.groups.power import _profile_for, _target_kind, apply_fail_on, reports_group
 
 
 def test_target_kind_and_auto_profile(tmp_path: Path):
@@ -43,3 +45,11 @@ def test_compare_reports_writes_json(tmp_path: Path):
     result = CliRunner().invoke(reports_group, ["compare", str(old), str(new), "--json-output", str(output)])
     assert result.exit_code == 0, result.output
     assert json.loads(output.read_text())["added"][0]["id"] == "new"
+
+
+def test_fail_on_blocks_high_but_ignores_false_positive():
+    ctx = click.Context(click.Command("scan"))
+    with pytest.raises(click.exceptions.Exit) as exc:
+        apply_fail_on(ctx, [{"type": "confirmed", "severity": "HIGH", "status": "confirmed"}], "high")
+    assert exc.value.exit_code == 2
+    apply_fail_on(ctx, [{"type": "reviewed", "severity": "HIGH", "status": "false-positive"}], "high")
