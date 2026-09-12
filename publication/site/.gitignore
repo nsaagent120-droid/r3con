@@ -1,0 +1,4 @@
+# Sortie de build MkDocs (à ne jamais versionner)
+site/
+.venv/
+__pycache__/
