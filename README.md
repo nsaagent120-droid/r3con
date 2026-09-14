@@ -1,4 +1,4 @@
-# r3con 7.3.0 — Security Research Toolkit
+# r3con 7.4.0 — Security Research Toolkit
 
 > Outil modulaire de recherche en sécurité pour l’audit de code, les binaires, les APK, les firmwares, les réseaux, les malwares, les conteneurs et les rapports.
 
@@ -8,6 +8,8 @@
 
 ## Statut de la release
 
+La version **7.4.0** est la version stable courante. Elle ajoute la console interactive colorée `r3con>`, les jobs d’outils externes dans des workspaces bornés, la commande `runtime`, la documentation opérationnelle par domaine et les tests de stabilité associés.
+
 La version **7.3.0** ajoute le contrat de finding v2.1 (localisation, exploitabilité,
 références CWE/CVE/ATT&CK, corroboration multi-outils), la détection unifiée des cibles,
 le plan d'analyse explicable avec reprise et cache versionné, l'analyse différentielle
@@ -15,7 +17,7 @@ le plan d'analyse explicable avec reprise et cache versionné, l'analyse différ
 (manifestes/lockfiles, SBOM CycloneDX et SPDX, politique locale offline), un runner
 dynamique isolé (réseau coupé par défaut, limites de ressources, mode simulation),
 le triage de fuzzing exporté en findings et les commandes `explain`/`summarize`/`ask`.
-La release **7.3.0** (2026-09-10) est la version stable courante ; elle remplace la base 7.2.0. Elle fournit une base offline-first, des dépendances optionnelles par domaine, une CLI Click/Rich, des contrats de résultats normalisés et des tests de non-régression. Les résultats sont des indications d’analyse et doivent être vérifiés par un analyste qualifié. L’outil ne remplace pas une revue manuelle, un bac à sable isolé ou un avis professionnel.
+La release **7.4.0** est la version stable courante ; elle prolonge la base 7.3.0 avec une exécution externe bornée et une console interactive colorée. Elle fournit une base offline-first, des dépendances optionnelles par domaine, une CLI Click/Rich, des contrats de résultats normalisés et des tests de non-régression. Les résultats sont des indications d’analyse et doivent être vérifiés par un analyste qualifié. L’outil ne remplace pas une revue manuelle, un bac à sable isolé ou un avis professionnel.
 
 ## Capacités principales
 
@@ -103,10 +105,10 @@ r3con explain FINDING_ID --report report.json
 r3con ask report.json "Quels risques sont corroborés par plusieurs outils ?"
 ```
 
-Toutes les fonctions v7.3 sont offline-first : aucun fichier, secret ou donnée n'est
+Toutes les fonctions v7.4 sont offline-first : aucun fichier, secret ou donnée n'est
 envoyé vers un service distant par défaut.
 
-Pour les commandes exactes et les options de chaque groupe, consulter le [guide utilisateur complet](docs/USER_GUIDE.md). Pour l’architecture interne et les contrats de données, consulter le [manuel technique](docs/MANUEL_TECHNIQUE_v7.2.md).
+Pour les commandes exactes et les options de chaque groupe, consulter le [guide utilisateur 7.4 complet](docs/USER_GUIDE_v7.4.md). Pour les concepts et les limites d’exécution, consulter le [modèle de fonctionnement 7.4](docs/OPERATING_MODEL_v7.4.md). Pour l’architecture interne et les contrats de données, consulter le [manuel technique](docs/MANUEL_TECHNIQUE_v7.2.md).
 
 ## Principes d’utilisation sûre
 
@@ -134,7 +136,8 @@ La CI GitHub exécute la compilation, les tests, Ruff, Pyflakes, Bandit et la co
 
 | Document | Contenu |
 |---|---|
-| [Guide utilisateur](docs/USER_GUIDE.md) | Installation, commandes, workflows et dépannage par domaine |
+| [Guide utilisateur 7.4](docs/USER_GUIDE_v7.4.md) | Installation, commandes, workflows et dépannage par domaine |
+| [Modèle de fonctionnement 7.4](docs/OPERATING_MODEL_v7.4.md) | Concepts, états, limites et architecture d’exécution |
 | [Manuel technique](docs/MANUEL_TECHNIQUE_v7.2.md) | Architecture, modules, configuration et intégrations |
 | [Guide de release stable](docs/STABLE_RELEASE.md) | Critères de stabilité, validation et exploitation en production |
 | [Sécurité](SECURITY_AUDIT.md) | Limites et recommandations de sécurité |
