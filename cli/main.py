@@ -120,6 +120,7 @@ from cli.groups.interactive import (
     r2_command, gdb_command,
     session_cmd, plugins_group, interactive_mode
 )
+from cli.groups.runtime import runtime_group
 
 # ── CLI root ──────────────────────────────────────────────────
 
@@ -198,6 +199,7 @@ cli.add_command(r2_command)
 cli.add_command(gdb_command)
 cli.add_command(session_cmd)
 cli.add_command(interactive_mode)
+cli.add_command(runtime_group)
 
 # ── Legacy compatibility: keep old command names ──────────────
 

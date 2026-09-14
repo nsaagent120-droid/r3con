@@ -1,5 +1,13 @@
 # Changelog r3con
 
+## 7.4.0 — Workspaces d’exécution et console interactive stabilisée
+
+- Ajout de `modules/integration/execution_workspace.py` pour exécuter des outils externes dans des répertoires privés, avec argv sans shell implicite, limites de durée/sortie/processus, environnement réduit, arrêt de groupe et isolation réseau stricte par défaut.
+- Ajout de `r3con runtime run` et `r3con runtime parse` pour les exécutions contrôlées depuis la CLI.
+- Amélioration de la console interactive : prompt coloré `r3con>`, commandes `run`, `jobs` et `stop`, historique conservé et nettoyage des jobs à la sortie.
+- Correction d’un doublon `binwalk` dans l’inventaire des intégrations externes.
+- Tests dédiés ajoutés pour l’absence de shell implicite, les timeouts, l’environnement autorisé et la déduplication de l’inventaire.
+
 ## 7.3.0 — Contrat v2.1, orchestration explicable, supply chain et analyse différentielle (publiée le 2026-09-10)
 
 ### Corrections bloquantes

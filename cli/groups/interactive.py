@@ -11,10 +11,11 @@ from rich.panel import Panel
 from rich.table import Table
 from rich import box
 from .helpers import console, print_banner, apply_theme, THEME_PRESETS, THEME_NAME, ok, warn, info, spinner
+from modules.integration.execution_workspace import ExecutionWorkspace, WorkspaceLimits
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.plugin_system import default_registry, save_run
 
-_CONSOLE_COMMANDS = ["help", "set", "show", "analyze", "analyze-pro", "r2", "gdb", "disasm", "dynamic", "audit", "advanced", "apk", "firmware", "research", "network", "tools", "plugins", "history", "sessions", "theme", "clear", "exit", "quit"]
+_CONSOLE_COMMANDS = ["help", "set", "show", "analyze", "analyze-pro", "r2", "gdb", "disasm", "dynamic", "audit", "advanced", "apk", "firmware", "research", "network", "tools", "plugins", "runtime", "run", "jobs", "stop", "history", "sessions", "theme", "clear", "exit", "quit"]
 
 def _setup_readline():
     try:
@@ -205,6 +206,9 @@ def _help():
         "    [cyan]analyze-pro <target> --profile full --chain[/]  Pipeline efficace\n"
         "    [cyan]config show / profiles / init[/]               Config puissante\n\n"
         "  [bold cyan]CONSOLE[/]\n"
+        "    [cyan]run <commande>[/]          Exécuter un outil dans un workspace borné\n"
+        "    [cyan]jobs[/]                    Lister les jobs du workspace courant\n"
+        "    [cyan]stop <id>[/]               Arrêter un job en cours\n"
         "    [cyan]theme [matrix|cyber|amber|mono][/]  Change terminal palette\n"
         "    [cyan]set target <file>[/]  Set the current target\n"
         "    [cyan]show options[/]       Show current context\n"
@@ -231,12 +235,15 @@ def interactive_mode(ctx):
     console.print(Panel("Type [cyan]help[/] for commands. Execute [cyan]r2[/], [cyan]gdb[/], [cyan]analyze[/] and [cyan]dynamic[/] without restarting r3con.", title="[bold cyan] r3con console [/bold cyan]", border_style="cyan"))
     history = []
     state = {"target": None}
+    runtime = ExecutionWorkspace(limits=WorkspaceLimits())
     while True:
         try:
-            prompt = "r3con" + (f"({Path(state['target']).name})" if state["target"] else "") + "> "
+            prompt_name = "r3con" + (f"({Path(state['target']).name})" if state["target"] else "")
+            prompt = click.style(prompt_name, fg="bright_cyan", bold=True) + click.style("> ", fg="cyan")
             user_input = input(prompt).strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n  [dim]Goodbye.[/]")
+            runtime.close()
             _save_readline(readline, history_file)
             break
         if not user_input:
@@ -245,6 +252,7 @@ def interactive_mode(ctx):
         lowered = user_input.lower()
         if lowered in ("exit", "quit", "q"):
             console.print("  [dim]Goodbye.[/]")
+            runtime.close()
             _save_readline(readline, history_file)
             break
         if lowered in ("help", "?"):
@@ -272,6 +280,35 @@ def interactive_mode(ctx):
             for s in ctx.obj["session"].list_sessions()[:10]:
                 console.print(f"  [cyan]{s['id']}[/]  {s['type']:<16} {s['time']}  [dim]{s['target'][:36]}[/]")
             continue
+        if lowered == "jobs":
+            if not runtime.jobs:
+                info("Aucun job actif dans ce workspace.")
+            else:
+                table = Table(box=box.SIMPLE_HEAVY)
+                table.add_column("ID", style="cyan")
+                table.add_column("Status", style="green")
+                table.add_column("Commande", style="white")
+                for job_id in list(runtime.jobs):
+                    item = runtime.status(job_id)
+                    table.add_row(job_id, item["status"], " ".join(item["argv"])[:100])
+                console.print(table)
+            continue
+        if lowered.startswith("stop "):
+            job_id = user_input.split(maxsplit=1)[1].strip()
+            try:
+                result = runtime.stop(job_id)
+                ok(f"Job {job_id} arrêté ({result['status']}).")
+            except KeyError:
+                warn(f"Job inconnu: {job_id}")
+            continue
+        if lowered.startswith("run "):
+            try:
+                command = shlex.split(user_input[4:])
+                job_id = runtime.start(command)
+                info(f"Job {job_id} lancé; utilisez 'jobs' ou 'stop {job_id}'.")
+            except (ValueError, RuntimeError) as exc:
+                warn(str(exc))
+            continue
         if lowered.startswith("set target "):
             state["target"] = user_input[11:].strip()
             ok(f"Target set to {state['target']}")
@@ -282,7 +319,7 @@ def interactive_mode(ctx):
             continue
         try:
             args = shlex.split(user_input)
-            command_names = {"analyze", "analyze-pro", "r2", "gdb", "disasm", "dynamic", "audit", "advanced", "apk", "firmware", "research", "network", "tools", "plugins", "session", "config", "benchmark", "correlate", "diff"}
+            command_names = {"analyze", "analyze-pro", "r2", "gdb", "disasm", "dynamic", "audit", "advanced", "apk", "firmware", "research", "network", "tools", "plugins", "session", "config", "runtime", "benchmark", "correlate", "diff"}
             if not args:
                 continue
             if args[0] not in command_names:
