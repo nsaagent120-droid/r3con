@@ -158,9 +158,6 @@ SPECS = (
     ToolSpec("ssdeep", ("ssdeep",), "fuzzy hashing", "misc",
              {"apt": "ssdeep"}, ("--help",),
              capabilities=("fuzzy", "hash")),
-    ToolSpec("binwalk", ("binwalk",), "firmware analysis", "misc",
-             {"apt": "binwalk", "pip": "binwalk"}, ("--help",),
-             capabilities=("firmware",)),  # Duplicate for misc category
 )
 
 
