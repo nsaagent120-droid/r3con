@@ -235,7 +235,11 @@ def interactive_mode(ctx):
     console.print(Panel("Type [cyan]help[/] for commands. Execute [cyan]r2[/], [cyan]gdb[/], [cyan]analyze[/] and [cyan]dynamic[/] without restarting r3con.", title="[bold cyan] r3con console [/bold cyan]", border_style="cyan"))
     history = []
     state = {"target": None}
-    runtime = ExecutionWorkspace(limits=WorkspaceLimits())
+    # Les jobs locaux de la console suivent le même comportement que
+    # ``runtime run`` : réseau bloqué par l'environnement, mais pas de refus
+    # systématique lorsque le conteneur interdit ``unshare -n``. Le mode strict
+    # reste disponible depuis la commande CLI ``runtime run --strict-network``.
+    runtime = ExecutionWorkspace(limits=WorkspaceLimits(strict_network=False))
     while True:
         try:
             prompt_name = "r3con" + (f"({Path(state['target']).name})" if state["target"] else "")
@@ -306,8 +310,11 @@ def interactive_mode(ctx):
                 command = shlex.split(user_input[4:])
                 job_id = runtime.start(command)
                 info(f"Job {job_id} lancé; utilisez 'jobs' ou 'stop {job_id}'.")
-            except (ValueError, RuntimeError) as exc:
-                warn(str(exc))
+            except (ValueError, RuntimeError, FileNotFoundError) as exc:
+                if isinstance(exc, FileNotFoundError):
+                    warn(f"Outil introuvable : {command[0]}")
+                else:
+                    warn(str(exc))
             continue
         if lowered.startswith("set target "):
             state["target"] = user_input[11:].strip()

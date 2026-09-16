@@ -53,7 +53,9 @@ def runtime_run(command, timeout, allow_network, strict_network, lenient_network
                     warn(result["stderr"][:4000])
             if result["status"] not in {"ok"}:
                 raise click.exceptions.Exit(1)
-    except (ValueError, RuntimeError) as exc:
+    except (ValueError, RuntimeError, FileNotFoundError) as exc:
+        if isinstance(exc, FileNotFoundError):
+            raise click.ClickException(f"outil introuvable: {command[0]}") from exc
         raise click.ClickException(str(exc)) from exc
 
 

@@ -273,11 +273,13 @@ class ExecutionWorkspace:
 
     def cleanup(self, job_id: str) -> None:
         with self._lock:
-            job = self.jobs.pop(job_id, None)
+            job = self.jobs.get(job_id)
         if not job:
             return
         if job.process.poll() is None:
             self.stop(job_id)
+        with self._lock:
+            self.jobs.pop(job_id, None)
         shutil.rmtree(job.cwd, ignore_errors=True)
 
     def close(self) -> None:
