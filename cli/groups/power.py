@@ -14,10 +14,12 @@ from __future__ import annotations
 import json
 import shutil
 import time
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 
 import click
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from .helpers import console, info, ok, section, warn
 
@@ -152,9 +154,10 @@ def _print_plan(target: Path, report: dict) -> None:
 @click.option("--offline", is_flag=True, help="Désactive toute intégration distante pendant l'analyse")
 @click.option("--fail-on", type=click.Choice(["critical", "high", "medium"]), default=None, help="Code de sortie 2 si un finding atteint ce seuil")
 @click.option("--json-output", type=click.Path(dir_okay=False), help="Écrire le rapport JSON")
+@click.option("--progress/--no-progress", default=True, show_default=True, help="Afficher la progression des cibles")
 @click.pass_context
 def scan_command(ctx, target, profile, timeout, workers, max_mb, no_cache, explain_plan,
-                 plan_only, resume, offline, fail_on, json_output):
+                 plan_only, resume, offline, fail_on, json_output, progress):
     """Lancer une analyse adaptative reproductible sur un fichier ou un dossier."""
     from modules.orchestration.orchestrator import Orchestrator
 
@@ -171,24 +174,35 @@ def scan_command(ctx, target, profile, timeout, workers, max_mb, no_cache, expla
         if not targets:
             raise click.ClickException("Aucun fichier analysable dans le dossier")
     reports = []
-    for item in targets:
-        kwargs = {"profile": selected, "timeout": timeout, "max_mb": max_mb,
-                  "max_workers": workers, "cache": not no_cache}
-        if offline:
-            kwargs["analysis.offline"] = True
-        if resume and len(targets) == 1:
-            kwargs["resume_dir"] = str(resume)
-        try:
-            if plan_only:
-                orchestrator = Orchestrator(str(item), **kwargs)
-                orchestrator.explain_only = True
-                reports.append(orchestrator.run())
-            else:
-                reports.append(Orchestrator(str(item), **kwargs).run())
-        except Exception as exc:
-            from core.result_schema import SCHEMA_VERSION
-            reports.append({"schema_version": SCHEMA_VERSION, "status": "error",
-                            "target": str(item), "error": str(exc), "findings": []})
+    progress_ctx = Progress(
+        SpinnerColumn(), TextColumn("[cyan]{task.description}"), BarColumn(),
+        MofNCompleteColumn(), TimeElapsedColumn(), console=console,
+        transient=True,
+    ) if progress and getattr(console, "is_terminal", False) else nullcontext()
+    with progress_ctx as progress_view:
+        task_id = progress_view.add_task("scan", total=len(targets)) if progress_view else None
+        for item in targets:
+            if progress_view:
+                progress_view.update(task_id, description=f"analyse {item.name}")
+            kwargs = {"profile": selected, "timeout": timeout, "max_mb": max_mb,
+                      "max_workers": workers, "cache": not no_cache}
+            if offline:
+                kwargs["analysis.offline"] = True
+            if resume and len(targets) == 1:
+                kwargs["resume_dir"] = str(resume)
+            try:
+                if plan_only:
+                    orchestrator = Orchestrator(str(item), **kwargs)
+                    orchestrator.explain_only = True
+                    reports.append(orchestrator.run())
+                else:
+                    reports.append(Orchestrator(str(item), **kwargs).run())
+            except Exception as exc:
+                from core.result_schema import SCHEMA_VERSION
+                reports.append({"schema_version": SCHEMA_VERSION, "status": "error",
+                                "target": str(item), "error": str(exc), "findings": []})
+            if progress_view:
+                progress_view.advance(task_id)
     if plan_only:
         if explain_plan or True:
             section("R3CON SCAN — PLAN")

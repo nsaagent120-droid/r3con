@@ -67,6 +67,23 @@ python -m pytest -q
 
 Commencez par le plan lorsque vous ne connaissez pas encore les dépendances disponibles. Le plan indique les tâches, les outils absents, les fallbacks et les limites.
 
+### Performance et progression
+
+Pour suivre une analyse de répertoire dans un terminal compatible, la progression est active par défaut :
+
+```bash
+r3con scan ./project --workers 4 --progress
+r3con scan ./project --no-progress
+```
+
+Le benchmark local crée un corpus temporaire déterministe et mesure la durée ainsi que le pic mémoire Python. Il ne lit pas les données du projet et ne contacte aucun service distant :
+
+```bash
+python scripts/benchmark.py --files 20 --runs 3 --workers 4 --output reports/benchmark.json
+```
+
+Conservez les résultats avec la version de r3con, la version de Python et le nombre de workers. Comparez des mesures obtenues dans des environnements similaires ; une valeur isolée ne constitue pas une régression ou une amélioration certaine.
+
 ## 4. Console interactive colorée
 
 Lancez la console avec :
