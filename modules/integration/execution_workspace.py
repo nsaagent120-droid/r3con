@@ -18,6 +18,7 @@ import tempfile
 import threading
 import time
 import uuid
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ from typing import Any
 MAX_COMMAND_ARGS = 64
 MAX_ARG_LENGTH = 4096
 DEFAULT_CAPTURE_BYTES = 1024 * 1024
+JOB_STORE_DIR = Path.home() / ".r3con" / "jobs"
 
 
 @dataclass(frozen=True)
@@ -87,13 +89,72 @@ class WorkspaceJob:
 class ExecutionWorkspace:
     """Gestionnaire de workspaces locaux pour exécutions contrôlées."""
 
-    def __init__(self, root: str | Path | None = None, *, limits: WorkspaceLimits | None = None):
+    def __init__(self, root: str | Path | None = None, *, limits: WorkspaceLimits | None = None,
+                 persist: bool = True):
         self.root = Path(root) if root else Path(tempfile.gettempdir()) / "r3con-workspaces"
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.root, 0o700)
         self.limits = limits or WorkspaceLimits()
         self.jobs: dict[str, WorkspaceJob] = {}
         self._lock = threading.RLock()
+        self.persist = persist
+        if self.persist:
+            JOB_STORE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+            os.chmod(JOB_STORE_DIR, 0o700)
+
+    def _persist(self, job: WorkspaceJob) -> None:
+        if not self.persist:
+            return
+        payload = job.result()
+        payload["limits"] = {
+            "wall_timeout_s": job.limits.wall_timeout_s,
+            "max_output_bytes": job.limits.max_output_bytes,
+            "max_processes": job.limits.max_processes,
+            "allow_network": job.limits.allow_network,
+            "strict_network": job.limits.strict_network,
+        }
+        path = JOB_STORE_DIR / f"{job.id}.json"
+        tmp = path.with_suffix(".tmp")
+        try:
+            tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(tmp, path)
+        except (OSError, TypeError, ValueError):
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    @staticmethod
+    def list_persisted() -> list[dict[str, Any]]:
+        if not JOB_STORE_DIR.exists():
+            return []
+        rows = []
+        for path in sorted(JOB_STORE_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                rows.append(json.loads(path.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                continue
+        return rows
+
+    @staticmethod
+    def get_persisted(job_id: str) -> dict[str, Any] | None:
+        path = JOB_STORE_DIR / f"{job_id}.json"
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    @staticmethod
+    def clean_persisted() -> int:
+        removed = 0
+        if JOB_STORE_DIR.exists():
+            for path in JOB_STORE_DIR.glob("*.json"):
+                try:
+                    path.unlink()
+                    removed += 1
+                except OSError:
+                    pass
+        return removed
 
     @staticmethod
     def _validate_argv(argv: list[str]) -> list[str]:
@@ -158,6 +219,7 @@ class ExecutionWorkspace:
         job = WorkspaceJob(job_id, clean_argv, cwd, proc, time.monotonic(), self.limits)
         with self._lock:
             self.jobs[job_id] = job
+        self._persist(job)
         job._collector = threading.Thread(target=self._collect, args=(job,), daemon=True)
         job._collector.start()
         return job_id
@@ -179,6 +241,7 @@ class ExecutionWorkspace:
         job.stdout.extend(out[:limit])
         job.stderr.extend(err[:limit])
         job.returncode = job.process.returncode
+        self._persist(job)
 
     def status(self, job_id: str) -> dict[str, Any]:
         with self._lock:

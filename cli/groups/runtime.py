@@ -1,8 +1,9 @@
-"""Commandes CLI pour lancer des outils externes dans un workspace borné."""
+"""Commandes CLI pour lancer et suivre des outils externes bornés."""
 from __future__ import annotations
 
 import json
 import shlex
+import time
 import click
 
 from .helpers import console, ok, warn
@@ -22,16 +23,13 @@ def runtime_group():
 @click.option("--json-output", is_flag=True, help="Afficher uniquement le résultat JSON.")
 def runtime_run(command, timeout, allow_network, lenient_network, json_output):
     """Lancer COMMAND dans un répertoire privé avec limites."""
-    limits = WorkspaceLimits(
-        wall_timeout_s=timeout,
-        allow_network=allow_network,
-        strict_network=not lenient_network,
-    )
+    limits = WorkspaceLimits(wall_timeout_s=timeout, allow_network=allow_network, strict_network=not lenient_network)
     try:
         with ExecutionWorkspace(limits=limits) as workspace:
             job_id = workspace.start(list(command))
             result = workspace.status(job_id)
             while result["status"] == "running":
+                time.sleep(0.02)
                 result = workspace.status(job_id)
             if json_output:
                 console.print_json(json.dumps(result, ensure_ascii=False))
@@ -45,6 +43,46 @@ def runtime_run(command, timeout, allow_network, lenient_network, json_output):
                 raise click.exceptions.Exit(1)
     except (ValueError, RuntimeError) as exc:
         raise click.ClickException(str(exc)) from exc
+
+
+@runtime_group.command("jobs")
+@click.option("--json-output", is_flag=True, help="Afficher uniquement le JSON.")
+def runtime_jobs(json_output):
+    """Lister les métadonnées des jobs terminés ou connus."""
+    rows = ExecutionWorkspace.list_persisted()
+    if json_output:
+        console.print_json(json.dumps(rows, ensure_ascii=False))
+        return
+    if not rows:
+        console.print("Aucun job persistant.")
+        return
+    for row in rows:
+        console.print(f"[cyan]{row.get('id')}[/] {row.get('status', 'unknown'):<10} "
+                      f"{' '.join(row.get('argv', []))[:100]}")
+
+
+@runtime_group.command("show")
+@click.argument("job_id")
+@click.option("--json-output", is_flag=True, help="Afficher uniquement le JSON.")
+def runtime_show(job_id, json_output):
+    """Afficher un job persistant par identifiant."""
+    row = ExecutionWorkspace.get_persisted(job_id)
+    if not row:
+        raise click.ClickException(f"Job inconnu: {job_id}")
+    if json_output:
+        console.print_json(json.dumps(row, ensure_ascii=False))
+    else:
+        console.print_json(json.dumps(row, ensure_ascii=False, indent=2))
+
+
+@runtime_group.command("clean")
+@click.option("--yes", is_flag=True, help="Confirmer sans question interactive.")
+def runtime_clean(yes):
+    """Supprimer les métadonnées persistantes des jobs."""
+    if not yes and not click.confirm("Supprimer l'historique des jobs ?"):
+        click.echo("Annulé.")
+        return
+    ok(f"{ExecutionWorkspace.clean_persisted()} job(s) supprimé(s).")
 
 
 @runtime_group.command("parse")

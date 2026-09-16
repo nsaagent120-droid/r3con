@@ -84,6 +84,19 @@ python scripts/benchmark.py --files 20 --runs 3 --workers 4 --output reports/ben
 
 Conservez les résultats avec la version de r3con, la version de Python et le nombre de workers. Comparez des mesures obtenues dans des environnements similaires ; une valeur isolée ne constitue pas une régression ou une amélioration certaine.
 
+### Contrôler le cache
+
+r3con utilise deux caches locaux complémentaires : le cache de fichiers pour les analyses historiques et le cache de tâches pour l’orchestrateur unifié. Ils sont versionnés et restent locaux.
+
+```bash
+r3con cache status
+r3con cache status --json-output
+r3con cache verify
+r3con cache clear --yes
+```
+
+`cache clear` supprime les résultats réutilisables, mais ne supprime pas les cibles, les rapports déjà exportés ou les workspaces analytiques. Après cette commande, le prochain scan recalculera les tâches nécessaires.
+
 ## 4. Console interactive colorée
 
 Lancez la console avec :
@@ -132,6 +145,17 @@ r3con> stop 657b499d64f242c3
 ```
 
 Les jobs sont lancés avec un environnement réduit. Le réseau est désactivé ou refusé par défaut lorsque l’isolation stricte n’est pas disponible. Un terminal shell libre n’est pas créé par `run`.
+
+Les métadonnées des jobs terminés sont conservées localement sous `~/.r3con/jobs/` afin de permettre la traçabilité après fermeture de la commande :
+
+```bash
+r3con runtime jobs
+r3con runtime jobs --json-output
+r3con runtime show JOB_ID
+r3con runtime clean --yes
+```
+
+Cette persistance concerne l’historique et les sorties bornées. Elle ne transforme pas un job batch en terminal interactif et ne permet pas de reprendre un processus après redémarrage.
 
 ## 5. Code source et audit SAST
 
