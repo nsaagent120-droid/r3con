@@ -19,11 +19,23 @@ def runtime_group():
 @click.argument("command", nargs=-1, required=True)
 @click.option("--timeout", type=click.IntRange(1, 86400), default=300, show_default=True)
 @click.option("--allow-network", is_flag=True, help="Autoriser le réseau; à utiliser uniquement en laboratoire contrôlé.")
-@click.option("--lenient-network", is_flag=True, help="Continuer même si l'isolation réseau n'est pas disponible.")
+@click.option("--strict-network", is_flag=True, help="Refuser le job si l'isolation réseau Linux stricte n'est pas disponible.")
+@click.option("--lenient-network", is_flag=True, hidden=True, help="Alias de compatibilité : désactiver le refus strict.")
 @click.option("--json-output", is_flag=True, help="Afficher uniquement le résultat JSON.")
-def runtime_run(command, timeout, allow_network, lenient_network, json_output):
-    """Lancer COMMAND dans un répertoire privé avec limites."""
-    limits = WorkspaceLimits(wall_timeout_s=timeout, allow_network=allow_network, strict_network=not lenient_network)
+def runtime_run(command, timeout, allow_network, strict_network, lenient_network, json_output):
+    """Lancer COMMAND dans un répertoire privé avec limites.
+
+    Par défaut, un job local continue avec réseau bloqué par l'environnement
+    réduit même si le noyau refuse un namespace réseau. Utiliser
+    ``--strict-network`` pour exiger l'isolation Linux complète.
+    """
+    if strict_network and lenient_network:
+        raise click.UsageError("--strict-network et --lenient-network sont incompatibles")
+    limits = WorkspaceLimits(
+        wall_timeout_s=timeout,
+        allow_network=allow_network,
+        strict_network=strict_network and not lenient_network,
+    )
     try:
         with ExecutionWorkspace(limits=limits) as workspace:
             job_id = workspace.start(list(command))

@@ -144,7 +144,7 @@ r3con> jobs
 r3con> stop 657b499d64f242c3
 ```
 
-Les jobs sont lancés avec un environnement réduit. Le réseau est désactivé ou refusé par défaut lorsque l’isolation stricte n’est pas disponible. Un terminal shell libre n’est pas créé par `run`.
+Les jobs sont lancés avec un environnement réduit. Pour les outils locaux, le réseau est bloqué par défaut et le job peut continuer même si le noyau ou le conteneur interdit `unshare -n`. Utilise `--strict-network` si le job doit être refusé lorsque l’isolation réseau Linux complète n’est pas disponible. Un terminal shell libre n’est pas créé par `run`.
 
 Les métadonnées des jobs terminés sont conservées localement sous `~/.r3con/jobs/` afin de permettre la traçabilité après fermeture de la commande :
 

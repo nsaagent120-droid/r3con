@@ -555,7 +555,15 @@ r3con runtime parse 'strings -n 8 ./program'
 
 ### 18.2 Réseau
 
-Le réseau est désactivé ou refusé par défaut selon le niveau d’isolation disponible. Pour un laboratoire explicitement autorisé :
+Pour les outils locaux comme `file`, `strings`, `readelf` ou `gdb`, r3con utilise par défaut un environnement réduit avec le réseau bloqué par variables d’environnement. Si le noyau ou le conteneur interdit `unshare -n`, le job local peut tout de même s’exécuter.
+
+Pour exiger l’isolation réseau Linux stricte et refuser le job lorsque `unshare -n` n’est pas disponible :
+
+```bash
+r3con runtime run --strict-network file ./program
+```
+
+Pour un laboratoire explicitement autorisé avec réseau :
 
 ```bash
 r3con runtime run --allow-network outil --option valeur
