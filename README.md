@@ -137,6 +137,7 @@ La CI GitHub exécute la compilation, les tests, Ruff, Pyflakes, Bandit et la co
 | Document | Contenu |
 |---|---|
 | [Guide utilisateur 7.4](docs/USER_GUIDE_v7.4.md) | Installation, commandes, workflows et dépannage par domaine |
+| [Manuel utilisateur complet FR](docs/MANUEL_UTILISATEUR_COMPLET_FR_v7.4.md) | Manuel détaillé d’utilisation de tous les domaines et fonctions |
 | [Modèle de fonctionnement 7.4](docs/OPERATING_MODEL_v7.4.md) | Concepts, états, limites et architecture d’exécution |
 | [Manuel technique](docs/MANUEL_TECHNIQUE_v7.2.md) | Architecture, modules, configuration et intégrations |
 | [Guide de release stable](docs/STABLE_RELEASE.md) | Critères de stabilité, validation et exploitation en production |
